@@ -174,12 +174,15 @@ class JointFit:
 
 def fit_joint(obs: pd.DataFrame, season: Season, ladders: dict[str, TeamLadder],
               probs: WinProbs, lam: float, tau: float = 2.0,
-              start: tuple[np.ndarray, float] | None = None) -> JointFit:
+              start: tuple[np.ndarray, float] | None = None,
+              fixed_hfa: float | None = None) -> JointFit:
     """Minimise  sum_g w_g (y_g - mu_g)^2 / (2 tau^2) + lam * sum_t KL(q_t || p_t(r)).
 
     The line term is a Gaussian log-likelihood with closing-line noise tau, so
     `lam` reads as the effective number of observed seasons each team's
-    win-total market is worth.
+    win-total market is worth. `fixed_hfa` holds home-field advantage at a
+    given value (e.g. the lines-only estimate): win totals barely identify it,
+    and at high lam it otherwise drifts to absorb team-level misfit.
     """
     teams = season.teams
     k = len(teams)
@@ -193,7 +196,7 @@ def fit_joint(obs: pd.DataFrame, season: Season, ladders: dict[str, TeamLadder],
 
     def unpack(x):
         r = np.append(x[:k - 1], -x[:k - 1].sum())
-        return r, x[k - 1]
+        return r, (x[k - 1] if fixed_hfa is None else fixed_hfa)
 
     def loss(x):
         r, hfa = unpack(x)
@@ -209,11 +212,14 @@ def fit_joint(obs: pd.DataFrame, season: Season, ladders: dict[str, TeamLadder],
         x0[-1] = 1.5
     else:
         x0 = np.append(start[0][:k - 1], start[1])
+    if fixed_hfa is not None:
+        x0 = x0[:k - 1]
     res = minimize(loss, x0, method="L-BFGS-B")
     r, hfa = unpack(res.x)
     resid = y - (r[h] - r[a] + hfa * nn)
     dist = season.wins_dist(r, hfa, probs)
-    mean_kl = np.mean([kl(L.q_buckets, bucket_probs(dist[i], L.cuts)) for i, L in lad])
+    kls = [kl(L.q_buckets, bucket_probs(dist[i], L.cuts)) for i, L in lad]
+    mean_kl = float(np.mean(kls)) if kls else 0.0
     return JointFit(pd.Series(r, index=teams), float(hfa),
                     float(np.sqrt(np.average(resid**2, weights=w))), float(mean_kl), lam,
                     bool(res.success))

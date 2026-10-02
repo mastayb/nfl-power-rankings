@@ -34,3 +34,20 @@ def test_bucket_probs_and_market_expected_wins():
     lad = TeamLadder("A", np.array([9]), np.array([0.4, 0.6]),
                      pd.Series([0.9, 0.6, 0.1], index=[8, 9, 10]), 0.01)
     assert expected_wins_market(lad, 7) == pytest.approx(8.6)
+
+
+def test_fit_joint_fixed_hfa_lines_only_matches_wls():
+    from ratings.linear import fit_margins
+    from ratings.wins import fit_joint
+
+    teams = ["A", "B", "C"]
+    obs = pd.DataFrame({"home_team": ["A", "B", "C", "A"], "away_team": ["B", "C", "A", "C"],
+                        "neutral": [False] * 4, "y": [5.0, 1.0, -2.0, 6.0], "weight": 1.0})
+    sched = pd.DataFrame({"game_id": ["g"], "week": [1], "home_team": ["A"], "away_team": ["B"],
+                          "neutral": [False], "result": [np.nan]})
+    season = Season.build(sched, teams)
+    probs = WinProbs(NormalModel(), 13.0)
+    wls = fit_margins(obs, "y", teams)
+    j = fit_joint(obs, season, {}, probs, lam=0.0, fixed_hfa=wls.hfa)
+    assert j.hfa == wls.hfa
+    np.testing.assert_allclose(j.ratings[teams], wls.ratings[teams], atol=1e-3)

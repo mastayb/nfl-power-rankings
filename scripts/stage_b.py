@@ -14,6 +14,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -25,9 +26,12 @@ from ratings.luck import load_pbp, luck_table  # noqa: E402
 from ratings.pbp_cache import load_pbp_cached  # noqa: E402
 from ratings.linear import fit_margins, line_observations, predict_margin  # noqa: E402
 from ratings.schedule import NFLVERSE_TEAMS, load_schedule  # noqa: E402
+from ratings.wins import (N_GAMES, Season, WinProbs, expected_wins_market,  # noqa: E402
+                          fit_joint, market_ladders)
 
 TEAMS = sorted(NFLVERSE_TEAMS)
 SNAP_DIR = ROOT / "data" / "snapshots"
+WIN_TOTALS_CONFIG = ROOT / "config" / "win_totals.yaml"  # written by scripts/win_totals.py
 HALF_LIFE = 3.0    # weeks
 LINE_NOISE = 2.0   # pts, closing-line noise vs true margin (residual SD of lines-only fit)
 
@@ -111,14 +115,36 @@ def main(snap_path: Path) -> None:
     print("\nLargest Kalshi residuals (market expected margin vs ratings):")
     print(k.head(6).to_string(index=False, float_format=lambda x: f"{x:+.2f}"))
 
-    # 3. Season-long market + résumé blend
+    # 3. Market rating = game lines + KXNFLWINS win totals, jointly
+    wt = yaml.safe_load(open(WIN_TOTALS_CONFIG))
+    season_state = Season.build(sched, TEAMS)
+    ladders = market_ladders(pd.read_parquet(snap_path))
+    probs = WinProbs(model, sigma)
+    joint = fit_joint(obs, season_state, ladders, probs, wt["lambda"],
+                      start=(fit.ratings.reindex(TEAMS).to_numpy(), fit.hfa),
+                      fixed_hfa=fit.hfa if wt["fix_hfa_to_lines"] else None)
+    market = joint.ratings
+    e_model = season_state.wins_dist(market.to_numpy(), joint.hfa, probs) @ np.arange(N_GAMES + 1)
+    e_market = np.array([expected_wins_market(ladders[t], season_state.wins[i])
+                         for i, t in enumerate(TEAMS)])
+    print(f"\n=== Market rating: lines + win totals (lambda {wt['lambda']:g}, HFA "
+          f"{'fixed' if wt['fix_hfa_to_lines'] else 'free'} at {joint.hfa:.2f}) ===")
+    print(f"expected wins vs KXNFLWINS: mean miss {np.mean(np.abs(e_model - e_market)):.2f} "
+          f"(lines only: see scripts/win_totals.py); max rating change vs lines only "
+          f"{(market - fit.ratings.reindex(TEAMS)).abs().max():.2f}; rank corr "
+          f"{market.rank().corr(fit.ratings.reindex(TEAMS).rank()):.3f}")
+
+    # 4. Season-long market + résumé blend
     k = completed_week(sched)
     blend = load_blend(k)
     # luck-neutral margins; trailing seasons set the INT share, current season refreshed
     feats = season_features(range(season - 3, season + 1),
                             lambda s: load_pbp_cached(s, refresh=s == season))
     sched_b = sched.merge(feats[["game_id", "margin_neutral"]], on="game_id", how="left")
-    br, b_hfa = blend_ratings(fit.ratings, fit.hfa, sched_b, blend)
+    br, b_hfa = blend_ratings(market, joint.hfa, sched_b, blend)
+    br["market_lines"] = fit.ratings.reindex(br.index)
+    br["E_wins"] = pd.Series(e_model, index=TEAMS).reindex(br.index)
+    br["E_wins_mkt"] = pd.Series(e_market, index=TEAMS).reindex(br.index)
     br["record"] = records(sched).reindex(br.index)
     br["rank_market"] = br.market.rank(ascending=False).astype(int)
     br["rank_resume"] = br.resume.rank(ascending=False).astype(int)
@@ -139,10 +165,12 @@ def main(snap_path: Path) -> None:
                    + np.where(br.close_t > 0, "-" + br.close_t.astype(str), ""))
     br["fum"] = br.recovered.astype(str) + "/" + br.fumbles.astype(str)
     print(br[["rank", "move", "record", "blend", "win_vs_avg", "market", "rank_market",
+              "E_wins", "E_wins_mkt",
               "resume", "rank_resume", "resume_neutral", "rank_neutral", "close", "close_luck",
               "fum", "fum_luck", "fum_pts", "to_margin"]].to_string(formatters={
         "blend": "{:+.2f}".format, "market": "{:+.2f}".format, "resume": "{:+.2f}".format,
-        "resume_neutral": "{:+.2f}".format,
+        "resume_neutral": "{:+.2f}".format, "E_wins": "{:.1f}".format,
+        "E_wins_mkt": "{:.1f}".format,
         "win_vs_avg": "{:.3f}".format, "move": "{:+d}".format, "close_luck": "{:+.1f}".format,
         "fum_luck": "{:+.1f}".format, "fum_pts": "{:+.1f}".format, "to_margin": "{:+d}".format}))
     print("close = one-score (<=8) record; close_luck = wins above .500 in those games.\n"
@@ -150,7 +178,7 @@ def main(snap_path: Path) -> None:
           "above 50%; fum_pts = that x 4.16 pts. Luck columns use every played game (incl. week "
           f"{blend.cutoff_week + 1} so far).")
 
-    # 4. Sensitivity
+    # 5. Sensitivity (lines-only fit)
     print("\n=== Sensitivity (vs main fit) ===")
     print(f"{'variant':34} {'HFA':>5} {'max|dr|':>8} {'rank corr':>9}  top 5")
     variants = [(f"half-life {h} wk", dict(half_life=h)) for h in (1.5, 6.0)]
@@ -167,7 +195,8 @@ def main(snap_path: Path) -> None:
 
     dest = snap_path.with_name(stem + "_stage_b.parquet")
     out = tab.reset_index(names="team").assign(hfa=fit.hfa, sigma=sigma, half_life=HALF_LIFE)
-    out = out.merge(br[["resume", "resume_neutral", "blend", "rank", "record", "close",
+    out = out.merge(br[["market", "E_wins", "E_wins_mkt", "resume", "resume_neutral", "blend",
+                        "rank", "record", "close",
                         "close_luck", "fumbles",
                         "recovered", "fum_luck", "fum_pts", "to_margin"]].rename(
         columns={"rank": "blend_rank"}).reset_index(names="team"), on="team")

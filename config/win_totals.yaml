@@ -1,0 +1,13 @@
+lambda: 300.0
+fix_hfa_to_lines: true
+chosen_from: '20261002T144930Z.parquet: held-out RMSE on 30 Kalshi lines'
+heldout_rmse:
+  '0': 3.2862
+  '1': 2.998
+  '3': 2.6885
+  '10': 2.2989
+  '30': 2.0571
+  '100': 1.9441
+  '300': 1.911
+  '1000': 1.8999
+  '3000': 1.8969
