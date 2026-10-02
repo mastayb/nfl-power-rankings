@@ -8,6 +8,7 @@ Run: python -u scripts/daily.py          (cron: see README notes in IDEAS.md / c
                               (<snapshot>_blind.parquet)
   4. season simulation        10,000 seasons from the blind ratings (<snapshot>_blind_sim.parquet)
   5. paper trades             open / mark / settle in data/paper/{trades,marks}.csv
+  6. git commit               data/snapshots + data/paper only (no push)
 """
 
 from __future__ import annotations
@@ -65,6 +66,28 @@ def settled_results(tickers: list[str]) -> dict[str, str]:
     return out
 
 
+COMMIT_PATHS = ["data/snapshots", "data/paper"]
+
+
+def commit_outputs(stem: str, n_open: int) -> None:
+    """Commit today's outputs (parquet + paper log; raw JSON is git-ignored).
+
+    Only COMMIT_PATHS are committed, so unrelated work in progress elsewhere in
+    the repo is never swept in. Never pushes. A git failure is reported but
+    does not fail the job.
+    """
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True)
+
+    git("add", "--", *COMMIT_PATHS)
+    if git("diff", "--cached", "--quiet", "--", *COMMIT_PATHS).returncode == 0:
+        print("git: nothing new to commit")
+        return
+    msg = f"daily: snapshot {stem} ({n_open} open paper trades)"
+    r = git("commit", "-m", msg, "--", *COMMIT_PATHS)
+    print(f"git: {'committed ' + msg if r.returncode == 0 else 'commit failed: ' + r.stderr.strip()}")
+
+
 def main() -> None:
     t0 = step("1/5 snapshot")
     run("snapshot.py")
@@ -104,6 +127,7 @@ def main() -> None:
     top = best.sort_values("ev", ascending=False).head(10)
     print(top[["ticker", "side", "model_p", "yes_bid", "yes_ask", "ev", "size_yes", "size_no"]]
           .to_string(index=False, float_format=lambda x: f"{x:.3f}"))
+    commit_outputs(stem, summary["open"])
     print(f"\ndone in {(time.time() - t0) / 60:.1f} min")
 
 
