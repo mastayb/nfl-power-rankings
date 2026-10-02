@@ -116,3 +116,27 @@ def compare(panel: pd.DataFrame, base: list[str], extra: list[str], n_boot: int 
         "rw_delta": float(np.mean(rw1 - rw0)), "rw_delta_sd": float(np.std(rw1 - rw0)),
         "coef": full[1:],
     }
+
+
+# --- season-long blend curve -------------------------------------------------------
+
+CURVE_WEEKS = (2, 12)
+
+
+def curve_basis(k) -> np.ndarray:
+    """[1, t, t^2], t = (k - 2) / 10: weights are quadratic in the cutoff week."""
+    t = (np.asarray(k, float) - CURVE_WEEKS[0]) / (CURVE_WEEKS[1] - CURVE_WEEKS[0])
+    return np.column_stack([np.ones_like(t), t, t**2])
+
+
+def curve_design(df: pd.DataFrame, preds: list[str]) -> np.ndarray:
+    """Intercept curve plus one weight curve per predictor; df needs column k."""
+    B = curve_basis(df.k.to_numpy())
+    return np.hstack([B] + [B * df[p].to_numpy(float)[:, None] for p in preds])
+
+
+def curve_weights(beta: np.ndarray, weeks, names: list[str]) -> pd.DataFrame:
+    """Evaluate fitted curve coefficients at `weeks`; names = intercept + predictors."""
+    B = curve_basis(np.asarray(weeks))
+    return pd.DataFrame({n: B @ beta[3 * i:3 * i + 3] for i, n in enumerate(names)},
+                        index=pd.Index(list(weeks), name="week"))

@@ -19,13 +19,12 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from ratings.backtest import load_history  # noqa: E402
-from ratings.evaluate import build_panel  # noqa: E402
+from ratings.evaluate import build_panel, curve_design, curve_weights  # noqa: E402
 from ratings.features import add_deserved, season_features  # noqa: E402
 from ratings.pbp_cache import load_pbp_cached  # noqa: E402
 
@@ -35,20 +34,6 @@ VARIANTS = {"margin": ("margin", 21.0), "neutral": ("margin_neutral", 21.0),
             "deserved": ("deserved", None)}
 N_BOOT = 1000
 OUT = ROOT / "data" / "resume_season_curve.csv"
-
-
-def basis(k: np.ndarray) -> np.ndarray:
-    """[1, t, t^2] with t = (k - 2) / 10, so t runs 0..1 over weeks 2..12."""
-    t = (np.asarray(k, float) - 2) / 10
-    return np.column_stack([np.ones_like(t), t, t**2])
-
-
-def curve_design(df: pd.DataFrame, preds: list[str]) -> np.ndarray:
-    B = basis(df.k.to_numpy())
-    cols = [B]  # intercept curve
-    for p in preds:
-        cols.append(B * df[p].to_numpy(float)[:, None])
-    return np.hstack(cols)
 
 
 def per_week_design(df: pd.DataFrame, preds_by_k) -> np.ndarray:
@@ -123,10 +108,7 @@ def main() -> None:
     # fitted curves on all seasons, for the chosen curve model
     preds = ["market_pred", "pred_margin", "pred_neutral"]
     beta = np.linalg.lstsq(curve_design(stack, preds), stack.result.to_numpy(float), rcond=None)[0]
-    B = basis(np.array(CUTOFFS))
-    names = ["a"] + ["b_market", "b_margin", "b_neutral"]
-    curves = pd.DataFrame({n: B @ beta[3 * i:3 * i + 3] for i, n in enumerate(names)},
-                          index=pd.Index(CUTOFFS, name="week"))
+    curves = curve_weights(beta, CUTOFFS, ["a", "b_market", "b_margin", "b_neutral"])
     print("\nFitted weights, curve: market + margin + neutral (all seasons):")
     print(curves.round(3).to_string())
     curves.to_csv(OUT)

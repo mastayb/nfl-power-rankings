@@ -46,11 +46,11 @@ def ridge_ratings(games: pd.DataFrame, y: np.ndarray, weights: np.ndarray,
 
 
 def resume_ratings(season_games: pd.DataFrame, k: int, half_life: float = 3.0,
-                   cap: float = 21.0) -> tuple[pd.Series, float]:
-    """Schedule-adjusted résumé through week k: results capped at +-cap,
-    decayed by age in weeks (half-life `half_life`) as of week k+1."""
-    res = season_games[(season_games.week <= k) & season_games.result.notna()]
-    return ridge_ratings(res, res.result.clip(-cap, cap).to_numpy(float),
+                   cap: float = 21.0, col: str = "result") -> tuple[pd.Series, float]:
+    """Schedule-adjusted résumé through week k: per-game `col` (home minus
+    away margin) capped at +-cap, decayed by age in weeks as of week k+1."""
+    res = season_games[(season_games.week <= k) & season_games[col].notna()]
+    return ridge_ratings(res, res[col].clip(-cap, cap).to_numpy(float),
                          decay_weight((k + 1 - res.week) * 7, half_life))
 
 

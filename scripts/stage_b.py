@@ -20,7 +20,9 @@ sys.path.insert(0, str(ROOT))
 
 from ratings.blend import blend_ratings, completed_week, load_blend  # noqa: E402
 from ratings.ladder import load_key_weights, win_prob  # noqa: E402
+from ratings.features import season_features  # noqa: E402
 from ratings.luck import load_pbp, luck_table  # noqa: E402
+from ratings.pbp_cache import load_pbp_cached  # noqa: E402
 from ratings.linear import fit_margins, line_observations, predict_margin  # noqa: E402
 from ratings.schedule import NFLVERSE_TEAMS, load_schedule  # noqa: E402
 
@@ -109,30 +111,38 @@ def main(snap_path: Path) -> None:
     print("\nLargest Kalshi residuals (market expected margin vs ratings):")
     print(k.head(6).to_string(index=False, float_format=lambda x: f"{x:+.2f}"))
 
-    # 3. Measured résumé blend
+    # 3. Season-long market + résumé blend
     k = completed_week(sched)
     blend = load_blend(k)
-    br, b_hfa = blend_ratings(fit.ratings, fit.hfa, sched, blend)
+    # luck-neutral margins; trailing seasons set the INT share, current season refreshed
+    feats = season_features(range(season - 3, season + 1),
+                            lambda s: load_pbp_cached(s, refresh=s == season))
+    sched_b = sched.merge(feats[["game_id", "margin_neutral"]], on="game_id", how="left")
+    br, b_hfa = blend_ratings(fit.ratings, fit.hfa, sched_b, blend)
     br["record"] = records(sched).reindex(br.index)
     br["rank_market"] = br.market.rank(ascending=False).astype(int)
     br["rank_resume"] = br.resume.rank(ascending=False).astype(int)
+    br["rank_neutral"] = br.resume_neutral.rank(ascending=False).astype(int)
     br["rank"] = br.blend.rank(ascending=False).astype(int)
     br["move"] = br.rank_market - br["rank"]
     br["win_vs_avg"] = [win_prob(model, r, sigma) for r in br.blend]
     br = br.sort_values("rank")
-    print(f"\n=== Blended rating: {blend.b_market:.3f} x market + {blend.b_resume:.3f} x résumé "
-          f"(cutoff week {blend.cutoff_week}) ===")
-    print(f"résumé = schedule-adjusted results through week {blend.cutoff_week}, margins capped "
-          f"+-{blend.cap:g}, {blend.half_life:g}-week half-life.  Blended HFA {b_hfa:.2f}")
+    print(f"\n=== Blended rating, week {blend.cutoff_week}: {blend.b_market:.3f} x market + "
+          f"{blend.b_margin:+.3f} x résumé {blend.b_neutral:+.3f} x luck-neutral résumé ===")
+    print(f"résumé = schedule-adjusted results through week {blend.cutoff_week}; luck-neutral = "
+          f"results minus fumble + INT luck points; margins capped +-{blend.cap:g}, "
+          f"{blend.half_life:g}-week half-life.\nTotal résumé weight {blend.resume_weight:.3f}, "
+          f"of which on luck {blend.b_margin:+.3f}.  Blended HFA {b_hfa:.2f}")
     luck = luck_table(sched, load_pbp(season), TEAMS)
     br = br.join(luck)
     br["close"] = (br.close_w.astype(str) + "-" + br.close_l.astype(str)
                    + np.where(br.close_t > 0, "-" + br.close_t.astype(str), ""))
     br["fum"] = br.recovered.astype(str) + "/" + br.fumbles.astype(str)
     print(br[["rank", "move", "record", "blend", "win_vs_avg", "market", "rank_market",
-              "resume", "rank_resume", "close", "close_luck", "fum", "fum_luck", "fum_pts",
-              "to_margin"]].to_string(formatters={
+              "resume", "rank_resume", "resume_neutral", "rank_neutral", "close", "close_luck",
+              "fum", "fum_luck", "fum_pts", "to_margin"]].to_string(formatters={
         "blend": "{:+.2f}".format, "market": "{:+.2f}".format, "resume": "{:+.2f}".format,
+        "resume_neutral": "{:+.2f}".format,
         "win_vs_avg": "{:.3f}".format, "move": "{:+d}".format, "close_luck": "{:+.1f}".format,
         "fum_luck": "{:+.1f}".format, "fum_pts": "{:+.1f}".format, "to_margin": "{:+d}".format}))
     print("close = one-score (<=8) record; close_luck = wins above .500 in those games.\n"
@@ -157,7 +167,8 @@ def main(snap_path: Path) -> None:
 
     dest = snap_path.with_name(stem + "_stage_b.parquet")
     out = tab.reset_index(names="team").assign(hfa=fit.hfa, sigma=sigma, half_life=HALF_LIFE)
-    out = out.merge(br[["resume", "blend", "rank", "record", "close", "close_luck", "fumbles",
+    out = out.merge(br[["resume", "resume_neutral", "blend", "rank", "record", "close",
+                        "close_luck", "fumbles",
                         "recovered", "fum_luck", "fum_pts", "to_margin"]].rename(
         columns={"rank": "blend_rank"}).reset_index(names="team"), on="team")
     out["blend_hfa"], out["blend_cutoff_week"] = b_hfa, blend.cutoff_week

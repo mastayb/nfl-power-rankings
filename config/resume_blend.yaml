@@ -1,106 +1,196 @@
-description: 'Rest-of-season margin = a + b_market * market_pred + b_resume * resume_pred, fitted on regular-season
-  games after each cutoff week. market: closing lines through week k+1; résumé: results through week k,
-  capped +-21; both decayed with a 3-week half-life. Intervals: 90% season bootstrap.'
+description: 'Season-long blend: rest-of-season margin = a + b_market * market + b_margin * résumé + b_neutral
+  * luck-neutral résumé, each weight quadratic in the cutoff week k and fitted jointly over weeks 2-12.
+  market: closing lines through week k+1; résumé: results through week k; luck-neutral résumé: results
+  minus fumble + INT luck points; margins capped +-21, 3-week half-life. Intervals: 90% season bootstrap.
+  Weeks outside 2-12 use the nearest end.'
 seasons: 1999-2025
 half_life_weeks: 3.0
 cap: 21.0
 by_cutoff:
 - cutoff_week: 2
-  n_games: 6112
-  a: 0.3003
-  b_market: 0.8329
+  a: 0.3516
+  a_90:
+  - -0.0216
+  - 0.7233
+  b_market: 0.8596
   b_market_90:
-  - 0.7439
-  - 0.901
-  b_resume: 0.0155
-  b_resume_90:
-  - -0.0021
-  - 0.0354
+  - 0.7608
+  - 0.9373
+  b_margin: 0.0622
+  b_margin_90:
+  - 0.0172
+  - 0.1135
+  b_neutral: -0.0466
+  b_neutral_90:
+  - -0.0891
+  - -0.0054
 - cutoff_week: 3
-  n_games: 5696
-  a: 0.3465
-  b_market: 0.812
+  a: 0.3064
+  a_90:
+  - -0.0319
+  - 0.6122
+  b_market: 0.8188
   b_market_90:
-  - 0.7231
-  - 0.8941
-  b_resume: 0.1058
-  b_resume_90:
-  - 0.0658
-  - 0.1508
+  - 0.7305
+  - 0.8948
+  b_margin: 0.1006
+  b_margin_90:
+  - 0.0382
+  - 0.1678
+  b_neutral: -0.0186
+  b_neutral_90:
+  - -0.0808
+  - 0.0419
 - cutoff_week: 4
-  n_games: 5298
-  a: 0.3097
-  b_market: 0.7839
+  a: 0.2788
+  a_90:
+  - -0.0563
+  - 0.5835
+  b_market: 0.783
   b_market_90:
-  - 0.6701
-  - 0.8822
-  b_resume: 0.1666
-  b_resume_90:
-  - 0.1185
-  - 0.2253
+  - 0.6964
+  - 0.859
+  b_margin: 0.1258
+  b_margin_90:
+  - 0.0376
+  - 0.2254
+  b_neutral: 0.0159
+  b_neutral_90:
+  - -0.0837
+  - 0.1126
 - cutoff_week: 5
-  n_games: 4914
-  a: 0.3662
-  b_market: 0.7381
+  a: 0.2689
+  a_90:
+  - -0.0611
+  - 0.5924
+  b_market: 0.7522
   b_market_90:
-  - 0.617
-  - 0.8495
-  b_resume: 0.2048
-  b_resume_90:
-  - 0.1493
-  - 0.2676
+  - 0.6641
+  - 0.8356
+  b_margin: 0.1378
+  b_margin_90:
+  - 0.0324
+  - 0.2574
+  b_neutral: 0.0568
+  b_neutral_90:
+  - -0.0716
+  - 0.1835
 - cutoff_week: 6
-  n_games: 4534
-  a: 0.3201
-  b_market: 0.787
+  a: 0.2766
+  a_90:
+  - -0.0644
+  - 0.6332
+  b_market: 0.7265
   b_market_90:
-  - 0.6823
-  - 0.8824
-  b_resume: 0.2082
-  b_resume_90:
-  - 0.1456
-  - 0.2782
+  - 0.6472
+  - 0.814
+  b_margin: 0.1368
+  b_margin_90:
+  - 0.0094
+  - 0.2683
+  b_neutral: 0.104
+  b_neutral_90:
+  - -0.0438
+  - 0.2388
 - cutoff_week: 7
-  n_games: 4156
-  a: 0.3032
-  b_market: 0.7609
+  a: 0.302
+  a_90:
+  - -0.0966
+  - 0.669
+  b_market: 0.7059
   b_market_90:
-  - 0.6768
-  - 0.8447
-  b_resume: 0.2213
-  b_resume_90:
-  - 0.1466
-  - 0.3057
+  - 0.6308
+  - 0.7898
+  b_margin: 0.1225
+  b_margin_90:
+  - -0.0211
+  - 0.2651
+  b_neutral: 0.1577
+  b_neutral_90:
+  - -0.0049
+  - 0.3099
 - cutoff_week: 8
-  n_games: 3778
-  a: 0.234
-  b_market: 0.7607
+  a: 0.3451
+  a_90:
+  - -0.0832
+  - 0.7582
+  b_market: 0.6903
   b_market_90:
-  - 0.6776
-  - 0.8597
-  b_resume: 0.215
-  b_resume_90:
-  - 0.1372
-  - 0.2854
+  - 0.6187
+  - 0.7763
+  b_margin: 0.0952
+  b_margin_90:
+  - -0.0591
+  - 0.2486
+  b_neutral: 0.2178
+  b_neutral_90:
+  - 0.0427
+  - 0.3813
 - cutoff_week: 9
-  n_games: 3407
-  a: 0.4269
-  b_market: 0.7122
+  a: 0.4058
+  a_90:
+  - -0.0648
+  - 0.8792
+  b_market: 0.6797
   b_market_90:
-  - 0.6074
-  - 0.8306
-  b_resume: 0.2604
-  b_resume_90:
-  - 0.1767
-  - 0.3482
+  - 0.6122
+  - 0.7735
+  b_margin: 0.0547
+  b_margin_90:
+  - -0.1011
+  - 0.2094
+  b_neutral: 0.2842
+  b_neutral_90:
+  - 0.1055
+  - 0.4539
 - cutoff_week: 10
-  n_games: 3023
-  a: 0.5837
-  b_market: 0.7017
+  a: 0.4842
+  a_90:
+  - -0.0312
+  - 0.9899
+  b_market: 0.6742
   b_market_90:
-  - 0.6025
-  - 0.8126
-  b_resume: 0.3365
-  b_resume_90:
-  - 0.2426
-  - 0.4133
+  - 0.5907
+  - 0.7783
+  b_margin: 0.0011
+  b_margin_90:
+  - -0.169
+  - 0.1643
+  b_neutral: 0.3571
+  b_neutral_90:
+  - 0.1695
+  - 0.5395
+- cutoff_week: 11
+  a: 0.5803
+  a_90:
+  - 0.0015
+  - 1.1422
+  b_market: 0.6738
+  b_market_90:
+  - 0.5707
+  - 0.8076
+  b_margin: -0.0657
+  b_margin_90:
+  - -0.2473
+  - 0.1162
+  b_neutral: 0.4364
+  b_neutral_90:
+  - 0.2321
+  - 0.646
+- cutoff_week: 12
+  a: 0.694
+  a_90:
+  - 0.0461
+  - 1.3533
+  b_market: 0.6784
+  b_market_90:
+  - 0.5355
+  - 0.8546
+  b_margin: -0.1456
+  b_margin_90:
+  - -0.3796
+  - 0.0539
+  b_neutral: 0.5222
+  b_neutral_90:
+  - 0.2792
+  - 0.7769
