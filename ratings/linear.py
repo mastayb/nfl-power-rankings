@@ -70,3 +70,52 @@ def predict_margin(fit: MarginFit, games: pd.DataFrame) -> np.ndarray:
     r = fit.ratings
     return (r.loc[games.home_team].to_numpy() - r.loc[games.away_team].to_numpy()
             + fit.hfa * ~games.neutral.to_numpy(bool))
+
+
+# --- Stage B inputs: current Kalshi lines + decayed past closing lines --------
+
+def decay_weight(age_days, half_life_weeks: float | None) -> np.ndarray:
+    """0.5 ** (age / half-life); None means no decay."""
+    age = np.maximum(np.asarray(age_days, float), 0.0)
+    if half_life_weeks is None:
+        return np.ones_like(age)
+    return 0.5 ** (age / (7.0 * half_life_weeks))
+
+
+def line_observations(stage_a: pd.DataFrame, games: pd.DataFrame, schedule: pd.DataFrame,
+                      model, sigma: float, asof, half_life_weeks: float | None = 3.0,
+                      results_weight: float = 0.0) -> pd.DataFrame:
+    """Observations of expected home margin for the Stage B fit.
+
+    - kalshi: Stage A `mean` for every game with open Kalshi markets, weight 1.
+    - close:  played games' closing sportsbook spread (nflverse spread_line, a
+              median) converted to an expected margin with the same margin
+              model, decayed by age.
+    - result: played games' final margin, weight `results_weight` x decay
+              (0 = off). Lines are ~2 pts noisy and results ~sigma, so the
+              likelihood-consistent value is about (2 / sigma)**2.
+    """
+    from ratings.ladder import mean_from_line
+
+    asof = pd.Timestamp(asof).tz_localize(None).normalize()
+    k = stage_a.merge(games[["game_id", "home_team", "away_team", "gameday"]], on="game_id")
+    obs = [pd.DataFrame({
+        "game_id": k.game_id, "home_team": k.home_team, "away_team": k.away_team,
+        "neutral": k.neutral.astype(bool), "y": k["mean"], "source": "kalshi",
+        "weight": 1.0, "gameday": pd.to_datetime(k.gameday),
+    })]
+
+    played = schedule[schedule.result.notna() & schedule.spread_line.notna()
+                      & ~schedule.game_id.isin(k.game_id)].copy()
+    played["gameday"] = pd.to_datetime(played.gameday)
+    decay = decay_weight((asof - played.gameday).dt.days, half_life_weeks)
+    base = {"game_id": played.game_id, "home_team": played.home_team,
+            "away_team": played.away_team, "neutral": played.neutral.astype(bool),
+            "gameday": played.gameday}
+    lines = {l: mean_from_line(model, l, sigma) for l in played.spread_line.unique()}
+    obs.append(pd.DataFrame(base | {"y": played.spread_line.map(lines), "source": "close",
+                                    "weight": decay}))
+    if results_weight > 0:
+        obs.append(pd.DataFrame(base | {"y": played.result.astype(float), "source": "result",
+                                        "weight": results_weight * decay}))
+    return pd.concat(obs, ignore_index=True)

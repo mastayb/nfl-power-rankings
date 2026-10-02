@@ -238,3 +238,23 @@ def fit_pooled_sigma(model, games: dict[str, pd.DataFrame]) -> tuple[float, dict
     res = least_squares(resid, start, bounds=(lo, hi))
     sigma = float(res.x[-1])
     return sigma, {k: _summarise(model, games[k], res.x[i], sigma) for i, k in enumerate(keys)}
+
+
+def loc_for(model, stat: str, target: float, sigma: float) -> float:
+    """Location mu at which model.<stat>(mu, sigma) equals `target`.
+
+    stat is "mean" or "median_line". Used to turn a sportsbook spread (a
+    median) into an expected margin, and a rating into a win probability.
+    """
+    f = getattr(model, stat)
+    return brentq(lambda mu: f(mu, sigma) - target, target - 15, target + 15, xtol=1e-6)
+
+
+def mean_from_line(model, line: float, sigma: float) -> float:
+    """Sportsbook spread (home perspective, a median) -> expected home margin."""
+    return model.mean(loc_for(model, "median_line", line, sigma), sigma)
+
+
+def win_prob(model, mean: float, sigma: float) -> float:
+    """P(home wins), ties half, for a game whose expected home margin is `mean`."""
+    return float(model.G(np.array([0.0]), loc_for(model, "mean", mean, sigma), sigma)[0])
