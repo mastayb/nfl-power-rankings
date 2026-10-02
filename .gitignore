@@ -4,3 +4,6 @@ __pycache__/
 .pytest_cache/
 data/cache/
 data/logs/
+
+# daily raw Kalshi snapshots stay local (parquet outputs + paper log are committed)
+data/snapshots/*.json
