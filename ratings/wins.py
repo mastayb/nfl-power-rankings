@@ -42,10 +42,20 @@ class WinProbs:
             self._home = np.array([model.G(np.zeros(1), m, sigma)[0] for m in locs])
             self._away = 1 - self._home
 
+        # resample onto an even grid in mean-margin space: lookups become index
+        # arithmetic instead of a binary search (the joint fit calls this a lot)
+        self._lo, self._step = -40.0, 0.01
+        grid = np.arange(self._lo, 40.0 + self._step / 2, self._step)
+        self._gh = np.interp(grid, self._mean, self._home)
+        self._ga = np.interp(grid, self._mean, self._away)
+
     def __call__(self, mean) -> tuple[np.ndarray, np.ndarray]:
-        mean = np.asarray(mean, float)
-        return (np.interp(mean, self._mean, self._home),
-                np.interp(mean, self._mean, self._away))
+        x = (np.asarray(mean, np.float32) - np.float32(self._lo)) / np.float32(self._step)
+        x = np.clip(x, 0, len(self._gh) - 1.001)
+        i = x.astype(np.int64)
+        f = x - i
+        gh, ga = self._gh, self._ga
+        return (gh[i] * (1 - f) + gh[i + 1] * f, ga[i] * (1 - f) + ga[i + 1] * f)
 
 
 # --- season state ------------------------------------------------------------------

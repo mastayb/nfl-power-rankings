@@ -10,6 +10,7 @@ dependencies = [
     "httpx",
     "pyyaml",
     "nflreadpy",
+    "cma",
 ]
 
 [project.optional-dependencies]

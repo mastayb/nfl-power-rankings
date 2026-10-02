@@ -124,6 +124,15 @@ def main(snap_path: Path) -> None:
                       start=(fit.ratings.reindex(TEAMS).to_numpy(), fit.hfa),
                       fixed_hfa=fit.hfa if wt["fix_hfa_to_lines"] else None)
     market = joint.ratings
+    market_lines_wins = market.copy()
+    joint_path = snap_path.with_name(stem + "_joint.parquet")
+    if joint_path.exists():
+        # full joint fit (lines + win totals + futures, through the season sim)
+        jf = pd.read_parquet(joint_path).set_index("team")
+        market = jf.joint.reindex(TEAMS)
+        print(f"\nUsing joint fit ratings from {joint_path.name} (tau {jf.tau.iloc[0]:.2f}, "
+              f"lam_f {jf.lam_f.iloc[0]:g}); max change vs lines + win totals "
+              f"{(market - market_lines_wins).abs().max():.2f}")
     e_model = season_state.wins_dist(market.to_numpy(), joint.hfa, probs) @ np.arange(N_GAMES + 1)
     e_market = np.array([expected_wins_market(ladders[t], season_state.wins[i])
                          for i, t in enumerate(TEAMS)])
@@ -143,6 +152,7 @@ def main(snap_path: Path) -> None:
     sched_b = sched.merge(feats[["game_id", "margin_neutral"]], on="game_id", how="left")
     br, b_hfa = blend_ratings(market, joint.hfa, sched_b, blend)
     br["market_lines"] = fit.ratings.reindex(br.index)
+    br["market_lines_wins"] = market_lines_wins.reindex(br.index)
     br["E_wins"] = pd.Series(e_model, index=TEAMS).reindex(br.index)
     br["E_wins_mkt"] = pd.Series(e_market, index=TEAMS).reindex(br.index)
     br["record"] = records(sched).reindex(br.index)
@@ -195,7 +205,8 @@ def main(snap_path: Path) -> None:
 
     dest = snap_path.with_name(stem + "_stage_b.parquet")
     out = tab.reset_index(names="team").assign(hfa=fit.hfa, sigma=sigma, half_life=HALF_LIFE)
-    out = out.merge(br[["market", "E_wins", "E_wins_mkt", "resume", "resume_neutral", "blend",
+    out = out.merge(br[["market", "market_lines_wins", "E_wins", "E_wins_mkt", "resume",
+                        "resume_neutral", "blend",
                         "rank", "record", "close",
                         "close_luck", "fumbles",
                         "recovered", "fum_luck", "fum_pts", "to_margin"]].rename(

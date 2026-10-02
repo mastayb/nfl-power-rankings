@@ -77,6 +77,12 @@ def main(snap_path: Path) -> None:
     season = int(pd.read_parquet(snap_path.with_name(stem + "_games.parquet")).game_id.str[:4].iloc[0])
     sigma, hfa = float(b.sigma.iloc[0]), float(b.hfa.iloc[0])
     ratings = b.market.reindex(TEAMS).to_numpy()
+    taus = TAUS
+    joint_path = snap_path.with_name(stem + "_joint.parquet")
+    if joint_path.exists():
+        jf = pd.read_parquet(joint_path).set_index("team")
+        ratings, taus = jf.joint.reindex(TEAMS).to_numpy(), [float(jf.tau.iloc[0])]
+        print(f"using joint fit {joint_path.name}: tau {taus[0]:.2f}")
     league = League.from_nflverse(TEAMS)
     sched = Schedule.from_frame(load_schedule(season), league)
     probs = WinProbs(load_key_weights(), sigma)
@@ -85,7 +91,7 @@ def main(snap_path: Path) -> None:
           f"{(~sched.played).sum()} games left; {mk.event.nunique()} futures sets")
 
     results, kls = {}, {}
-    for tau in TAUS:
+    for tau in taus:
         t0 = time.time()
         res = simulate(league, sched, ratings, hfa, probs, n_sims=N_SIMS, tau=tau, seed=1)
         results[tau] = res.probs
@@ -98,7 +104,7 @@ def main(snap_path: Path) -> None:
     tab.loc["ALL (excl. seeds 2-7)"] = pd.DataFrame(
         {f"tau={t:g}": [k.drop("seed", level="kind").mean()] for t, k in kls.items()}).iloc[0]
     print(tab.round(4).to_string())
-    best = min(TAUS, key=lambda t: kls[t].drop("seed", level="kind").mean())
+    best = min(taus, key=lambda t: kls[t].drop("seed", level="kind").mean())
     print(f"-> closest to market: tau = {best:g}")
 
     cmp = compare(results[best], mk)
