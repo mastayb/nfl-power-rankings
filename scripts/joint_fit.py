@@ -48,7 +48,8 @@ def fmt_parts(p: dict) -> str:
             + " ".join(f"{k} {v:.4f}" for k, v in fk.items()))
 
 
-def main(snap_path: Path) -> None:
+def prepare(snap_path: Path) -> dict:
+    """Load a snapshot's inputs and build the fast simulator for a joint fit."""
     stem = snap_path.stem
     tidy = pd.read_parquet(snap_path)
     stage_a = pd.read_parquet(snap_path.with_name(stem + "_stage_a.parquet"))
@@ -65,6 +66,33 @@ def main(snap_path: Path) -> None:
                   n_sims=N_SIMS, seed=0)
     ladders = market_ladders(tidy)
     sets = futures_sets(tidy, TEAMS)
+    return dict(stem=stem, tidy=tidy, obs=obs, lam_w=lam_w, sim=sim, ladders=ladders,
+                sets=sets, sigma=sigma, sched_df=sched_df)
+
+
+def blind_fit(snap_path: Path, max_evals: int = 4000) -> pd.DataFrame:
+    """Lines + win totals, tau fitted, futures excluded (lam_f = 0).
+
+    The model the paper-trade log judges futures markets with: it has not seen
+    any futures price, so it can disagree with them honestly. Writes
+    <snapshot>_blind.parquet.
+    """
+    d = prepare(snap_path)
+    obs = d["obs"]
+    lines = fit_margins(obs, "y", TEAMS, weights=obs.weight.to_numpy())
+    obj = JointObjective(obs, TEAMS, d["sim"], d["ladders"], [], lines.hfa, d["lam_w"], 0.0)
+    res = obj.fit(lines.ratings.reindex(TEAMS).to_numpy(), max_evals=max_evals)
+    out = pd.DataFrame({"team": TEAMS, "rating": res.ratings.reindex(TEAMS).to_numpy(),
+                        "tau": res.tau, "hfa": res.hfa, "sigma": d["sigma"],
+                        "line_rmse": res.parts["line_rmse"], "evals": res.evals})
+    out.to_parquet(snap_path.with_name(d["stem"] + "_blind.parquet"), index=False)
+    return out
+
+
+def main(snap_path: Path) -> None:
+    d = prepare(snap_path)
+    stem, tidy, obs, lam_w = d["stem"], d["tidy"], d["obs"], d["lam_w"]
+    sim, ladders, sets = d["sim"], d["ladders"], d["sets"]
     print(f"snapshot {snap_path.relative_to(ROOT)}: {len(obs)} lines, {len(ladders)} win "
           f"ladders, {len(sets)} futures sets; lam_w {lam_w:g}; {N_SIMS} sims per evaluation")
 

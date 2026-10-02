@@ -31,6 +31,7 @@ from ratings.wins import (N_GAMES, Season, WinProbs, expected_wins_market,  # no
 
 TEAMS = sorted(NFLVERSE_TEAMS)
 SNAP_DIR = ROOT / "data" / "snapshots"
+USE_JOINT = False   # --joint: use <snapshot>_joint.parquet ratings (lines + win totals + futures)
 WIN_TOTALS_CONFIG = ROOT / "config" / "win_totals.yaml"  # written by scripts/win_totals.py
 HALF_LIFE = 3.0    # weeks
 LINE_NOISE = 2.0   # pts, closing-line noise vs true margin (residual SD of lines-only fit)
@@ -126,7 +127,7 @@ def main(snap_path: Path) -> None:
     market = joint.ratings
     market_lines_wins = market.copy()
     joint_path = snap_path.with_name(stem + "_joint.parquet")
-    if joint_path.exists():
+    if USE_JOINT and joint_path.exists():
         # full joint fit (lines + win totals + futures, through the season sim)
         jf = pd.read_parquet(joint_path).set_index("team")
         market = jf.joint.reindex(TEAMS)
@@ -217,4 +218,6 @@ def main(snap_path: Path) -> None:
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else latest_snapshot())
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    USE_JOINT = "--joint" in sys.argv  # opt in to the full joint fit (diagnostic for now)
+    main(Path(args[0]).resolve() if args else latest_snapshot())

@@ -28,6 +28,7 @@ from ratings.wins import WinProbs  # noqa: E402
 
 TEAMS = sorted(NFLVERSE_TEAMS)
 SNAP_DIR = ROOT / "data" / "snapshots"
+USE_JOINT = False   # --joint: use <snapshot>_joint.parquet ratings (lines + win totals + futures)
 N_SIMS = 10_000
 TAUS = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0]  # best fit to Kalshi futures, 2026-10-02: 4
 SET_KINDS = {"division": "division", "one_seed": "seed_1", "conference": "conf",
@@ -79,7 +80,7 @@ def main(snap_path: Path) -> None:
     ratings = b.market.reindex(TEAMS).to_numpy()
     taus = TAUS
     joint_path = snap_path.with_name(stem + "_joint.parquet")
-    if joint_path.exists():
+    if USE_JOINT and joint_path.exists():
         jf = pd.read_parquet(joint_path).set_index("team")
         ratings, taus = jf.joint.reindex(TEAMS).to_numpy(), [float(jf.tau.iloc[0])]
         print(f"using joint fit {joint_path.name}: tau {taus[0]:.2f}")
@@ -133,4 +134,6 @@ def main(snap_path: Path) -> None:
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else latest_snapshot())
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    USE_JOINT = "--joint" in sys.argv  # opt in to the full joint fit (diagnostic for now)
+    main(Path(args[0]).resolve() if args else latest_snapshot())
