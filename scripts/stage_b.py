@@ -18,6 +18,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from ratings.blend import blend_ratings, completed_week, load_blend  # noqa: E402
 from ratings.ladder import load_key_weights, win_prob  # noqa: E402
 from ratings.linear import fit_margins, line_observations, predict_margin  # noqa: E402
 from ratings.schedule import NFLVERSE_TEAMS, load_schedule  # noqa: E402
@@ -33,6 +34,18 @@ pd.set_option("display.max_rows", 200)
 
 def latest_snapshot() -> Path:
     return sorted(p for p in SNAP_DIR.glob("*.parquet") if "_" not in p.stem)[-1]
+
+
+def records(schedule: pd.DataFrame) -> pd.Series:
+    """W-L (-T) per team from played games."""
+    p = schedule[schedule.result.notna()]
+    out = {}
+    for t in TEAMS:
+        home, away = p[p.home_team == t].result, -p[p.away_team == t].result
+        m = pd.concat([home, away])
+        w, l, ties = (m > 0).sum(), (m < 0).sum(), (m == 0).sum()
+        out[t] = f"{w}-{l}" + (f"-{ties}" if ties else "")
+    return pd.Series(out)
 
 
 def stage_a_sigma(stage_a: pd.DataFrame) -> float:
@@ -95,7 +108,27 @@ def main(snap_path: Path) -> None:
     print("\nLargest Kalshi residuals (market expected margin vs ratings):")
     print(k.head(6).to_string(index=False, float_format=lambda x: f"{x:+.2f}"))
 
-    # 3. Sensitivity
+    # 3. Measured résumé blend
+    k = completed_week(sched)
+    blend = load_blend(k)
+    br, b_hfa = blend_ratings(fit.ratings, fit.hfa, sched, blend)
+    br["record"] = records(sched).reindex(br.index)
+    br["rank_market"] = br.market.rank(ascending=False).astype(int)
+    br["rank_resume"] = br.resume.rank(ascending=False).astype(int)
+    br["rank"] = br.blend.rank(ascending=False).astype(int)
+    br["move"] = br.rank_market - br["rank"]
+    br["win_vs_avg"] = [win_prob(model, r, sigma) for r in br.blend]
+    br = br.sort_values("rank")
+    print(f"\n=== Blended rating: {blend.b_market:.3f} x market + {blend.b_resume:.3f} x résumé "
+          f"(cutoff week {blend.cutoff_week}) ===")
+    print(f"résumé = schedule-adjusted results through week {blend.cutoff_week}, margins capped "
+          f"+-{blend.cap:g}, {blend.half_life:g}-week half-life.  Blended HFA {b_hfa:.2f}")
+    print(br[["rank", "move", "record", "blend", "win_vs_avg", "market", "rank_market",
+              "resume", "rank_resume"]].to_string(formatters={
+        "blend": "{:+.2f}".format, "market": "{:+.2f}".format, "resume": "{:+.2f}".format,
+        "win_vs_avg": "{:.3f}".format, "move": "{:+d}".format}))
+
+    # 4. Sensitivity
     print("\n=== Sensitivity (vs main fit) ===")
     print(f"{'variant':34} {'HFA':>5} {'max|dr|':>8} {'rank corr':>9}  top 5")
     variants = [(f"half-life {h} wk", dict(half_life=h)) for h in (1.5, 6.0)]
@@ -112,6 +145,9 @@ def main(snap_path: Path) -> None:
 
     dest = snap_path.with_name(stem + "_stage_b.parquet")
     out = tab.reset_index(names="team").assign(hfa=fit.hfa, sigma=sigma, half_life=HALF_LIFE)
+    out = out.merge(br[["resume", "blend", "rank", "record"]].rename(
+        columns={"rank": "blend_rank"}).reset_index(names="team"), on="team")
+    out["blend_hfa"], out["blend_cutoff_week"] = b_hfa, blend.cutoff_week
     out.to_parquet(dest, index=False)
     print(f"\nwrote {dest.relative_to(ROOT)}")
 

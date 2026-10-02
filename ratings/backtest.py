@@ -45,6 +45,15 @@ def ridge_ratings(games: pd.DataFrame, y: np.ndarray, weights: np.ndarray,
     return r - r.mean(), float(beta[k])
 
 
+def resume_ratings(season_games: pd.DataFrame, k: int, half_life: float = 3.0,
+                   cap: float = 21.0) -> tuple[pd.Series, float]:
+    """Schedule-adjusted résumé through week k: results capped at +-cap,
+    decayed by age in weeks (half-life `half_life`) as of week k+1."""
+    res = season_games[(season_games.week <= k) & season_games.result.notna()]
+    return ridge_ratings(res, res.result.clip(-cap, cap).to_numpy(float),
+                         decay_weight((k + 1 - res.week) * 7, half_life))
+
+
 def cutoff_ratings(season_games: pd.DataFrame, k: int, half_life: float = 3.0,
                    cap: float = 21.0) -> pd.DataFrame:
     """Market and résumé ratings as of just before week k+1 kicks off.
@@ -54,11 +63,9 @@ def cutoff_ratings(season_games: pd.DataFrame, k: int, half_life: float = 3.0,
     Both decayed by age in weeks with the same half-life (recency bias).
     """
     lines = season_games[season_games.week <= k + 1]
-    res = season_games[season_games.week <= k]
     m, m_hfa = ridge_ratings(lines, lines.spread_line.to_numpy(float),
                              decay_weight((k + 1 - lines.week) * 7, half_life))
-    s, s_hfa = ridge_ratings(res, res.result.clip(-cap, cap).to_numpy(float),
-                             decay_weight((k + 1 - res.week) * 7, half_life))
+    s, s_hfa = resume_ratings(season_games, k, half_life, cap)
     out = pd.DataFrame({"market": m, "resume": s}).fillna(0.0)
     out["gap"] = out.resume - out.market
     out.attrs["market_hfa"], out.attrs["resume_hfa"] = m_hfa, s_hfa
@@ -121,3 +128,24 @@ def cover_rate(ats: pd.Series) -> tuple[float, int]:
     """ATS win rate excluding pushes, and the number of non-push games."""
     decided = ats[ats != 0]
     return float((decided > 0).mean()) if len(decided) else np.nan, len(decided)
+
+
+def blend_coefficients(hist: pd.DataFrame, cutoffs, n_boot: int = 300) -> pd.DataFrame:
+    """Regress later results on market and résumé predictions at each cutoff:
+
+        result = a + b_market * market_pred + b_resume * resume_pred
+
+    with 90% season-bootstrap intervals."""
+    def fit(d):
+        X = np.column_stack([np.ones(len(d)), d.market_pred, d.resume_pred])
+        return ols(X, d.result.to_numpy(float))
+
+    rows = []
+    for k in cutoffs:
+        p = cutoff_panel(hist, k)
+        b = fit(p)
+        lo, hi = np.percentile(season_bootstrap(p, fit, n_boot), [5, 95], axis=0)
+        rows.append({"cutoff_week": k, "n_games": len(p), "a": b[0],
+                     "b_market": b[1], "b_market_90": [lo[1], hi[1]],
+                     "b_resume": b[2], "b_resume_90": [lo[2], hi[2]]})
+    return pd.DataFrame(rows)

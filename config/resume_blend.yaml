@@ -1,0 +1,106 @@
+description: 'Rest-of-season margin = a + b_market * market_pred + b_resume * resume_pred, fitted on regular-season
+  games after each cutoff week. market: closing lines through week k+1; résumé: results through week k,
+  capped +-21; both decayed with a 3-week half-life. Intervals: 90% season bootstrap.'
+seasons: 1999-2025
+half_life_weeks: 3.0
+cap: 21.0
+by_cutoff:
+- cutoff_week: 2
+  n_games: 6112
+  a: 0.3003
+  b_market: 0.8329
+  b_market_90:
+  - 0.7439
+  - 0.901
+  b_resume: 0.0155
+  b_resume_90:
+  - -0.0021
+  - 0.0354
+- cutoff_week: 3
+  n_games: 5696
+  a: 0.3465
+  b_market: 0.812
+  b_market_90:
+  - 0.7231
+  - 0.8941
+  b_resume: 0.1058
+  b_resume_90:
+  - 0.0658
+  - 0.1508
+- cutoff_week: 4
+  n_games: 5298
+  a: 0.3097
+  b_market: 0.7839
+  b_market_90:
+  - 0.6701
+  - 0.8822
+  b_resume: 0.1666
+  b_resume_90:
+  - 0.1185
+  - 0.2253
+- cutoff_week: 5
+  n_games: 4914
+  a: 0.3662
+  b_market: 0.7381
+  b_market_90:
+  - 0.617
+  - 0.8495
+  b_resume: 0.2048
+  b_resume_90:
+  - 0.1493
+  - 0.2676
+- cutoff_week: 6
+  n_games: 4534
+  a: 0.3201
+  b_market: 0.787
+  b_market_90:
+  - 0.6823
+  - 0.8824
+  b_resume: 0.2082
+  b_resume_90:
+  - 0.1456
+  - 0.2782
+- cutoff_week: 7
+  n_games: 4156
+  a: 0.3032
+  b_market: 0.7609
+  b_market_90:
+  - 0.6768
+  - 0.8447
+  b_resume: 0.2213
+  b_resume_90:
+  - 0.1466
+  - 0.3057
+- cutoff_week: 8
+  n_games: 3778
+  a: 0.234
+  b_market: 0.7607
+  b_market_90:
+  - 0.6776
+  - 0.8597
+  b_resume: 0.215
+  b_resume_90:
+  - 0.1372
+  - 0.2854
+- cutoff_week: 9
+  n_games: 3407
+  a: 0.4269
+  b_market: 0.7122
+  b_market_90:
+  - 0.6074
+  - 0.8306
+  b_resume: 0.2604
+  b_resume_90:
+  - 0.1767
+  - 0.3482
+- cutoff_week: 10
+  n_games: 3023
+  a: 0.5837
+  b_market: 0.7017
+  b_market_90:
+  - 0.6025
+  - 0.8126
+  b_resume: 0.3365
+  b_resume_90:
+  - 0.2426
+  - 0.4133
