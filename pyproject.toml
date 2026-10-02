@@ -1,0 +1,18 @@
+[project]
+name = "nfl-market-ratings"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy",
+    "pandas",
+    "pyarrow",
+    "httpx",
+    "pyyaml",
+    "nflreadpy",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
