@@ -64,3 +64,22 @@ def test_tidy_markets_columns_and_math():
     assert r.mid == pytest.approx(0.515)
     assert r.width == pytest.approx(0.01)
     assert r.close_time == pd.Timestamp("2026-10-06T13:30:00Z")
+
+
+def test_get_retries_transport_errors(monkeypatch):
+    import httpx
+
+    from ratings.kalshi import KalshiClient
+
+    calls = {"n": 0}
+
+    def handler(request):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise httpx.ConnectTimeout("handshake timed out")
+        return httpx.Response(200, json={"ok": True})
+
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    c = KalshiClient(base_url="https://example.test")
+    c._http = httpx.Client(base_url="https://example.test", transport=httpx.MockTransport(handler))
+    assert c.get("/x") == {"ok": True} and calls["n"] == 3

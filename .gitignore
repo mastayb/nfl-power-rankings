@@ -7,3 +7,5 @@ data/logs/
 
 # daily raw Kalshi snapshots stay local (parquet outputs + paper log are committed)
 data/snapshots/*.json
+data/paper/.lock
+data/paper/watch_state.json

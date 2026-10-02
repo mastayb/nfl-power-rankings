@@ -32,7 +32,8 @@ MODEL_COL = {"division": "division", "one_seed": "seed_1", "conference": "conf",
              "super_bowl": "sb", "playoff": "playoffs"}   # "seed": seed_<k> from the event
 
 TRADE_COLS = ["trade_id", "opened_at", "ticker", "event", "kind", "team", "side", "price",
-              "fee", "model_p", "ev", "size_at_price", "status", "closed_at", "result", "pnl"]
+              "fee", "model_p", "ev", "size_at_price", "status", "closed_at", "result", "pnl",
+              "kickoff", "close_price", "clv"]   # last three: game trades only
 MARK_COLS = ["marked_at", "trade_id", "ticker", "side", "yes_bid", "yes_ask", "side_mid",
              "model_p", "mark_pnl"]
 
@@ -70,21 +71,23 @@ def price_markets(tidy: pd.DataFrame, raw_markets: dict, sim: pd.DataFrame) -> p
 
 
 TEXT_COLS = {"opened_at": object, "closed_at": object, "result": object, "status": object,
-             "marked_at": object}
+             "marked_at": object, "kickoff": object}
 
 
 def _read(path: Path, cols: list[str]) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame(columns=cols)
-    return pd.read_csv(path, dtype={c: t for c, t in TEXT_COLS.items() if c in cols})
+    df = pd.read_csv(path, dtype={c: t for c, t in TEXT_COLS.items() if c in cols})
+    return df.reindex(columns=cols)          # older logs gain any new columns
 
 
 def update(priced: pd.DataFrame, settled: dict[str, str] | None = None,
            now: str | None = None, trades_path: Path = TRADES,
-           marks_path: Path = MARKS) -> dict:
+           marks_path: Path = MARKS, min_edge: float = MIN_EDGE) -> dict:
     """Open new trades, mark open ones, close settled ones. Returns a summary.
 
     settled: ticker -> "yes" / "no" for markets that have resolved.
+    priced may carry a `kickoff` column (game markets); it is stored on the trade.
     """
     now = now or datetime.now(timezone.utc).isoformat(timespec="seconds")
     trades_path.parent.mkdir(parents=True, exist_ok=True)
@@ -110,7 +113,7 @@ def update(priced: pd.DataFrame, settled: dict[str, str] | None = None,
         for side in ("yes", "no"):
             ev = r.ev_yes if side == "yes" else r.ev_no
             size = r.size_yes if side == "yes" else r.size_no
-            if ev < MIN_EDGE or size < 1 or (r.ticker, side) in open_keys:
+            if ev < min_edge or size < 1 or (r.ticker, side) in open_keys:
                 continue
             price = r.yes_ask if side == "yes" else round(1 - r.yes_bid, 4)
             trades.loc[len(trades)] = {
@@ -118,7 +121,8 @@ def update(priced: pd.DataFrame, settled: dict[str, str] | None = None,
                 "kind": r.kind, "team": r.team, "side": side, "price": price, "fee": fee(price),
                 "model_p": r.model_p if side == "yes" else 1 - r.model_p, "ev": ev,
                 "size_at_price": size, "status": "open", "closed_at": None, "result": None,
-                "pnl": None}
+                "pnl": None, "kickoff": getattr(r, "kickoff", None), "close_price": None,
+                "clv": None}
             opened.append(next_id)
             next_id += 1
 
@@ -142,3 +146,50 @@ def update(priced: pd.DataFrame, settled: dict[str, str] | None = None,
     marks.to_csv(marks_path, index=False)
     return {"opened": opened, "closed": closed, "open": int((trades.status == "open").sum()),
             "marked": len(new_marks)}
+
+
+# --- shared job plumbing (daily.py, game_watch.py) ------------------------------------
+
+def settled_results(client, tickers: list[str]) -> dict[str, str]:
+    """ticker -> "yes"/"no" for markets that have resolved (others are skipped)."""
+    out = {}
+    for t in tickers:
+        m = client.get(f"/markets/{t}")["market"]
+        if m.get("result") in ("yes", "no"):
+            out[t] = m["result"]
+    return out
+
+
+class JobLock:
+    """Exclusive lock so the daily and hourly jobs never write the logs at once."""
+
+    def __init__(self, path: Path = PAPER_DIR / ".lock"):
+        self.path = path
+
+    def __enter__(self):
+        import fcntl
+
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.fh = open(self.path, "w")
+        fcntl.flock(self.fh, fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, *exc):
+        import fcntl
+
+        fcntl.flock(self.fh, fcntl.LOCK_UN)
+        self.fh.close()
+
+
+def commit_paths(root: Path, paths: list[str], msg: str) -> str:
+    """Commit only `paths` (never pushes); returns a one-line status."""
+    import subprocess
+
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True)
+
+    git("add", "--", *paths)
+    if git("diff", "--cached", "--quiet", "--", *paths).returncode == 0:
+        return "git: nothing new to commit"
+    r = git("commit", "-m", msg, "--", *paths)
+    return f"git: committed {msg}" if r.returncode == 0 else f"git: commit failed: {r.stderr.strip()}"

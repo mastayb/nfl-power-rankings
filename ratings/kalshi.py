@@ -56,7 +56,13 @@ class KalshiClient:
 
     def get(self, path: str, params: dict | None = None, retries: int = 4) -> dict:
         for attempt in range(retries + 1):
-            r = self._http.get(path, params=params)
+            try:
+                r = self._http.get(path, params=params)
+            except httpx.TransportError:      # timeouts, dropped connections: retry
+                if attempt < retries:
+                    time.sleep(2 * 2**attempt)
+                    continue
+                raise
             if r.status_code == 429 or r.status_code >= 500:
                 if attempt < retries:
                     time.sleep(0.5 * 2**attempt)
