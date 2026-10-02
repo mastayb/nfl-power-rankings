@@ -4,10 +4,15 @@ margin         final margin (nflverse result)
 net_epa        offensive EPA/play, home minus away (run + pass plays)
 net_sr         offensive success rate, home minus away
 net_epa_live   net_epa on plays with posteam win prob in [5%, 95%] (no garbage time)
+net_epa_pass   dropback EPA/play, home minus away (net_epa_rush: other run/pass plays)
 luck_pts       points of fumble-recovery + interception luck in the home team's favour
 margin_neutral margin - luck_pts
 avg_wp         time-weighted mean home win probability (nflverse `wp`, no betting
                line in it) minus 0.5: a "game control" measure
+net_epa_pts    total offensive EPA, home minus away (points scale)
+epa_pts_neutral net_epa_pts - luck_pts
+deserved       post-game expected margin from luck-neutral EPA + success rate (add_deserved)
+pgwe           post-game win expectancy from `deserved`, minus 0.5
 """
 
 from __future__ import annotations
@@ -57,7 +62,11 @@ def game_features(pbp: pd.DataFrame, int_share: pd.Series) -> pd.DataFrame:
                                        margin=("result", "first"))
 
     plays = pbp[pbp.play_type.isin(["run", "pass"]) & pbp.epa.notna() & pbp.posteam.notna()]
-    off = plays.groupby(["game_id", "posteam"]).agg(epa=("epa", "mean"), sr=("success", "mean"))
+    off = plays.groupby(["game_id", "posteam"]).agg(epa=("epa", "mean"), sr=("success", "mean"),
+                                                    epa_sum=("epa", "sum"))
+    is_pass = plays.qb_dropback == 1
+    off = off.join(plays[is_pass].groupby(["game_id", "posteam"]).epa.mean().rename("epa_pass"))
+    off = off.join(plays[~is_pass].groupby(["game_id", "posteam"]).epa.mean().rename("epa_rush"))
     live = plays[plays.wp.between(*WP_LIVE)]
     off_live = live.groupby(["game_id", "posteam"]).epa.mean().rename("epa_live")
     off = off.join(off_live)
@@ -70,6 +79,9 @@ def game_features(pbp: pd.DataFrame, int_share: pd.Series) -> pd.DataFrame:
     games["net_epa"] = h.epa - a.epa
     games["net_sr"] = h.sr - a.sr
     games["net_epa_live"] = h.epa_live - a.epa_live
+    games["net_epa_pass"] = h.epa_pass - a.epa_pass
+    games["net_epa_rush"] = h.epa_rush - a.epa_rush
+    games["net_epa_pts"] = h.epa_sum - a.epa_sum
 
     # fumble luck: recoveries above 50% of recoverable fumbles, worth the EPA swing
     fum = pbp[(pbp.fumble == 1) & pbp.fumbled_1_team.notna() & pbp.fumble_recovery_1_team.notna()]
@@ -88,6 +100,8 @@ def game_features(pbp: pd.DataFrame, int_share: pd.Series) -> pd.DataFrame:
 
     games["luck_pts"] = games.fum_pts + games.int_pts
     games["margin_neutral"] = games.margin - games.luck_pts
+    # luck is measured on the EPA scale, so this removes it from total net EPA
+    games["epa_pts_neutral"] = games.net_epa_pts - games.luck_pts
     games["avg_wp"] = pbp.groupby("game_id").apply(_time_weighted_wp,
                                                    include_groups=False).reindex(games.index) - 0.5
     return games.reset_index()
@@ -98,3 +112,30 @@ def season_features(seasons, load) -> pd.DataFrame:
     pbp_all = {s: load(s) for s in seasons}
     share = int_share_by_season(pd.concat(pbp_all.values()))
     return pd.concat([game_features(p, share) for p in pbp_all.values()], ignore_index=True)
+
+
+DESERVED_STATS = ["epa_pts_neutral", "net_sr"]
+
+
+def add_deserved(games: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    """Post-game expected margin (Connelly-style "deserved" margin).
+
+    margin ~ luck-neutral net EPA (points) + success rate, fitted across all
+    games. EPA already contains turnover swings, so the fumble/INT luck points
+    are subtracted from total net EPA first; `deserved` is then the margin such
+    a luck-free performance usually produces. It is a descriptive per-game
+    transform, not fitted to the later games being predicted.
+    """
+    from scipy.stats import norm
+
+    g = games.dropna(subset=DESERVED_STATS + ["margin"])
+    X = np.column_stack([np.ones(len(g))] + [g[c].to_numpy(float) for c in DESERVED_STATS])
+    beta = np.linalg.lstsq(X, g.margin.to_numpy(float), rcond=None)[0]
+    resid_sd = float(np.std(g.margin.to_numpy(float) - X @ beta))
+    out = games.copy()
+    Xa = np.column_stack([np.ones(len(out))] + [out[c].fillna(0).to_numpy(float)
+                                                for c in DESERVED_STATS])
+    out["deserved"] = Xa @ beta
+    out["pgwe"] = norm.cdf(out.deserved / resid_sd) - 0.5
+    info = dict(zip(["intercept"] + DESERVED_STATS, np.round(beta, 3)), resid_sd=round(resid_sd, 2))
+    return out, info

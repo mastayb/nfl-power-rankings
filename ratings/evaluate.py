@@ -31,8 +31,12 @@ def variant_ratings(season_games: pd.DataFrame, k: int, col: str, cap: float | N
 
 
 def build_panel(hist: pd.DataFrame, k: int, variants: dict[str, tuple[str, float | None]],
-                half_life: float = 3.0) -> pd.DataFrame:
-    """Later games (week > k) with market_pred and pred_<variant> columns."""
+                half_life: float = 3.0, resume_half_life: float | None = None) -> pd.DataFrame:
+    """Later games (week > k) with market_pred and pred_<variant> columns.
+
+    `half_life` decays the market's lines; `resume_half_life` (default: same)
+    decays the résumé variants, so the two can be tuned separately."""
+    rhl = half_life if resume_half_life is None else resume_half_life
     out = []
     for season, g in hist.groupby("season"):
         lines = g[g.week <= k + 1]
@@ -47,7 +51,7 @@ def build_panel(hist: pd.DataFrame, k: int, variants: dict[str, tuple[str, float
 
         later["market_pred"] = pred(m, m_hfa)
         for name, (col, cap) in variants.items():
-            r, hfa = variant_ratings(g, k, col, cap, half_life)
+            r, hfa = variant_ratings(g, k, col, cap, rhl)
             later[f"pred_{name}"] = pred(r, hfa)
         out.append(later)
     return pd.concat(out, ignore_index=True)
