@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT))
 
 from ratings.blend import blend_ratings, completed_week, load_blend  # noqa: E402
 from ratings.ladder import load_key_weights, win_prob  # noqa: E402
+from ratings.luck import load_pbp, luck_table  # noqa: E402
 from ratings.linear import fit_margins, line_observations, predict_margin  # noqa: E402
 from ratings.schedule import NFLVERSE_TEAMS, load_schedule  # noqa: E402
 
@@ -123,10 +124,21 @@ def main(snap_path: Path) -> None:
           f"(cutoff week {blend.cutoff_week}) ===")
     print(f"résumé = schedule-adjusted results through week {blend.cutoff_week}, margins capped "
           f"+-{blend.cap:g}, {blend.half_life:g}-week half-life.  Blended HFA {b_hfa:.2f}")
+    luck = luck_table(sched, load_pbp(season), TEAMS)
+    br = br.join(luck)
+    br["close"] = (br.close_w.astype(str) + "-" + br.close_l.astype(str)
+                   + np.where(br.close_t > 0, "-" + br.close_t.astype(str), ""))
+    br["fum"] = br.recovered.astype(str) + "/" + br.fumbles.astype(str)
     print(br[["rank", "move", "record", "blend", "win_vs_avg", "market", "rank_market",
-              "resume", "rank_resume"]].to_string(formatters={
+              "resume", "rank_resume", "close", "close_luck", "fum", "fum_luck", "fum_pts",
+              "to_margin"]].to_string(formatters={
         "blend": "{:+.2f}".format, "market": "{:+.2f}".format, "resume": "{:+.2f}".format,
-        "win_vs_avg": "{:.3f}".format, "move": "{:+d}".format}))
+        "win_vs_avg": "{:.3f}".format, "move": "{:+d}".format, "close_luck": "{:+.1f}".format,
+        "fum_luck": "{:+.1f}".format, "fum_pts": "{:+.1f}".format, "to_margin": "{:+d}".format}))
+    print("close = one-score (<=8) record; close_luck = wins above .500 in those games.\n"
+          "fum = fumbles recovered / recoverable fumbles in the team's games; fum_luck = recoveries\n"
+          "above 50%; fum_pts = that x 4.16 pts. Luck columns use every played game (incl. week "
+          f"{blend.cutoff_week + 1} so far).")
 
     # 4. Sensitivity
     print("\n=== Sensitivity (vs main fit) ===")
@@ -145,7 +157,8 @@ def main(snap_path: Path) -> None:
 
     dest = snap_path.with_name(stem + "_stage_b.parquet")
     out = tab.reset_index(names="team").assign(hfa=fit.hfa, sigma=sigma, half_life=HALF_LIFE)
-    out = out.merge(br[["resume", "blend", "rank", "record"]].rename(
+    out = out.merge(br[["resume", "blend", "rank", "record", "close", "close_luck", "fumbles",
+                        "recovered", "fum_luck", "fum_pts", "to_margin"]].rename(
         columns={"rank": "blend_rank"}).reset_index(names="team"), on="team")
     out["blend_hfa"], out["blend_cutoff_week"] = b_hfa, blend.cutoff_week
     out.to_parquet(dest, index=False)
