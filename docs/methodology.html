@@ -7816,6 +7816,7 @@ a.anchor-link {
 <li>Season simulation and playoff odds</li>
 <li>Validation: what was tested, what held up</li>
 <li>Known limitations</li>
+<li>Statistical methods and references</li>
 <li>Changelog</li>
 </ol>
 </div>
@@ -7892,6 +7893,7 @@ a.anchor-link {
 </ul>
 <p><strong>Margin model.</strong> Margins are integers. P(<em>M</em> = <em>m</em>) is a normal curve, bucketed to integers, reweighted by a <strong>key-number weight</strong> <em>w</em>(|<em>m</em>|) estimated from 2015–2025 results against closing spreads. That way 3, 7, 10 and 14 carry their real share and ties are rare. Beyond 21 the weights share one tail value.</p>
 <p>Each game's location and σ are fitted to its ladder by weighted least squares, with weights 1/width² so tight quotes count more. Moneyline-only games use the pooled σ. Quotes at ≤ 2¢ or ≥ 98¢ are dropped. The output per game is the <strong>expected home margin (mean)</strong>, which is what the ratings use, and the <strong>fair line (median)</strong>, which is comparable to a sportsbook spread. On the first snapshot, the fair line matched the book within 0.5 points for all 16 ladder games.</p>
+<p><em>Methods:</em> <a href="https://en.wikipedia.org/wiki/Non-linear_least_squares">Non-linear least squares</a>, <a href="https://en.wikipedia.org/wiki/Weighted_least_squares">Weighted least squares</a>, <a href="https://en.wikipedia.org/wiki/Normal_distribution">Normal distribution</a>, <a href="https://en.wikipedia.org/wiki/Iterative_proportional_fitting">Iterative proportional fitting</a> (key-number weights), <a href="https://en.wikipedia.org/wiki/Median">Median</a></p>
 </div>
 </div>
 </div>
@@ -8032,6 +8034,7 @@ This snapshot: 28 Kalshi games, pooled sigma 12.25
 </ol>
 <p>Lines enter as a Gaussian likelihood (2-point noise), win totals as λ × KL. <strong>λ = 300</strong> was chosen by holding out the current Kalshi lines and predicting them; win totals cut that error by about 40% (3.29 → 1.91 points). Home-field advantage is held at the lines-only estimate, because win totals barely identify it.</p>
 <p>Futures (division, conference, Super Bowl, #1 seed) are <strong>not</strong> in the published market rating. A full joint fit through the season simulation exists (<code>scripts/joint_fit.py</code>) but is used as a diagnostic.</p>
+<p><em>Methods:</em> the joint fit is <a href="https://en.wikipedia.org/wiki/Maximum_likelihood_estimation">Maximum likelihood estimation</a> with weights: the line term is a Gaussian log-likelihood (equivalent to <a href="https://en.wikipedia.org/wiki/Least_squares">Least squares</a>), and each win-total term is a <a href="https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence">Kullback–Leibler divergence</a> (a scaled multinomial log-likelihood) of the <a href="https://en.wikipedia.org/wiki/Poisson_binomial_distribution">Poisson binomial distribution</a>. The rating structure is a Gaussian <a href="https://en.wikipedia.org/wiki/Pairwise_comparison">Paired comparison analysis</a> model, i.e. Thurstone's <a href="https://en.wikipedia.org/wiki/Law_of_comparative_judgment">Law of comparative judgment</a>. Optimised with <a href="https://en.wikipedia.org/wiki/Limited-memory_BFGS">L-BFGS-B</a> using <a href="https://en.wikipedia.org/wiki/Finite_difference">Finite difference</a> gradients. λ chosen by held-out validation (<a href="https://en.wikipedia.org/wiki/Cross-validation_%28statistics%29">Cross-validation</a>).</p>
 </div>
 </div>
 </div>
@@ -8180,6 +8183,7 @@ HFA 1.76; mean |model - market| expected wins: 0.07
 <li><strong>Interception luck:</strong> every interception is also recorded as a pass defended. A defense "should" intercept a share <em>s</em> of its passes defended, where <em>s</em> is the trailing 3-season league rate (about 22% around 2000, 17% in 2025; it drifts, so it isn't fixed). Each interception above <em>s</em> × passes defended is worth <strong>3.40 points</strong> (EPA of an interception vs. a broken-up incompletion).</li>
 </ul>
 <p><strong>Close-game record and turnover margin</strong> are reported in the tables for context, but are not part of any rating.</p>
+<p><em>Methods:</em> <a href="https://en.wikipedia.org/wiki/Ridge_regression">Ridge regression</a>, <a href="https://en.wikipedia.org/wiki/Weighted_least_squares">Weighted least squares</a>, <a href="https://en.wikipedia.org/wiki/Exponential_decay">Exponential decay</a> weights (half-life), expected points (EPA) from the <a href="https://www.nflfastr.com/">nflfastR models</a></p>
 </div>
 </div>
 </div>
@@ -8709,6 +8713,7 @@ HFA 1.76; mean |model - market| expected wins: 0.07
 </ul>
 <p>Out of sample (leave-one-season-out), this curve matched or beat separate per-week fits and a hard switch at week 6.</p>
 <p>Caveat: the curve was calibrated against a lines-only market rating (history has no win-total prices). Today's market rating also uses win totals and is more accurate, so the résumé weights may be slightly generous.</p>
+<p><em>Methods:</em> <a href="https://en.wikipedia.org/wiki/Linear_regression">Linear regression</a>, <a href="https://en.wikipedia.org/wiki/Polynomial_regression">Polynomial regression</a> basis, varying-coefficient models (Hastie &amp; Tibshirani, 1993; see references), <a href="https://en.wikipedia.org/wiki/Cross-validation_%28statistics%29">Cross-validation</a> (leave-one-season-out), <a href="https://en.wikipedia.org/wiki/Bootstrapping_%28statistics%29">Bootstrapping</a> by season (cluster bootstrap), <a href="https://en.wikipedia.org/wiki/Regression_toward_the_mean">Regression toward the mean</a></p>
 </div>
 </div>
 </div>
@@ -8987,6 +8992,7 @@ HFA 1.76; mean |model - market| expected wins: 0.07
 <li>Ratings carry roughly ±1 point of uncertainty, so neighbouring ranks within a point or so are effectively ties even when the displayed values differ.</li>
 <li>Win % vs. average uses the Stage A margin model at the pooled σ. Expected margin converts to win probability the same way for every team. This was checked directly: on 7,000 games, a spread converts to the same win rate in low-total and high-total games, so defense-first teams aren't shortchanged.</li>
 </ul>
+<p><em>Methods:</em> <a href="https://en.wikipedia.org/wiki/Ranking">Ranking</a> (standard competition ranking, "1224"), <a href="https://en.wikipedia.org/wiki/Probit_model">Probit model</a> (the margin-to-probability check)</p>
 </div>
 </div>
 </div>
@@ -9101,6 +9107,7 @@ HFA 1.76; mean |model - market| expected wins: 0.07
 <li>7 seeds per conference. Higher seed hosts; #1 plays the lowest remaining seed.</li>
 </ul>
 <p><strong>Validated</strong> on actual 2020–2025 results (<code>scripts/validate_tiebreakers.py</code>): it reproduces every playoff field, division winner, #1 seed and wild-card pairing, 12 of 12 conference-seasons.</p>
+<p><em>Methods:</em> <a href="https://en.wikipedia.org/wiki/Monte_Carlo_method">Monte Carlo method</a>, <a href="https://en.wikipedia.org/wiki/Variance_reduction">Variance reduction</a> via common random numbers (the joint fit's fast simulator), <a href="https://en.wikipedia.org/wiki/Random_effects_model">Random effects model</a> (the per-team τ shift), <a href="https://en.wikipedia.org/wiki/CMA-ES">CMA-ES</a> (optimising through the simulation), <a href="https://www.nfl.com/standings/tie-breaking-procedures">NFL tie-breaking procedures</a></p>
 </div>
 </div>
 </div>
@@ -9258,6 +9265,7 @@ HFA 1.76; mean |model - market| expected wins: 0.07
 <li>The project's aim is therefore the best <em>market-implied</em> estimate of team skill, not a betting edge.</li>
 </ul>
 <p><strong>Scoreboard</strong> (<code>scripts/scoreboard.py</code>). Every model variant is scored, on every daily snapshot, on market prices it wasn't fitted on: held-out current game lines, futures, and forward closing lines. If the file exists, the latest results load below.</p>
+<p><em>Methods:</em> <a href="https://en.wikipedia.org/wiki/Efficient-market_hypothesis">Efficient-market hypothesis</a>, <a href="https://en.wikipedia.org/wiki/Cross-validation_%28statistics%29">Cross-validation</a>, <a href="https://en.wikipedia.org/wiki/Bootstrapping_%28statistics%29">Bootstrapping</a>, <a href="https://en.wikipedia.org/wiki/Standard_error">Standard error</a></p>
 </div>
 </div>
 </div>
@@ -9391,12 +9399,133 @@ HFA 1.76; mean |model - market| expected wins: 0.07
 </div>
 </div>
 </div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=a32b95c5">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h2 id="11.-Statistical-methods-and-references">11. Statistical methods and references<a class="anchor-link" href="#11.-Statistical-methods-and-references">¶</a></h2><table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Where it's used</th>
+<th>Reference</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Maximum likelihood estimation</td>
+<td>Market rating: lines + win totals fitted as one likelihood</td>
+<td><a href="https://en.wikipedia.org/wiki/Maximum_likelihood_estimation">Maximum likelihood estimation</a></td>
+</tr>
+<tr>
+<td>(Weighted) least squares</td>
+<td>Stage A ladder fits; market and résumé ratings</td>
+<td><a href="https://en.wikipedia.org/wiki/Weighted_least_squares">Weighted least squares</a>, <a href="https://en.wikipedia.org/wiki/Non-linear_least_squares">Non-linear least squares</a></td>
+</tr>
+<tr>
+<td>Paired comparisons (Thurstone Case V)</td>
+<td>Margin = r<sub>home</sub> − r<sub>away</sub> + H, with normal noise</td>
+<td><a href="https://en.wikipedia.org/wiki/Law_of_comparative_judgment">Law of comparative judgment</a>, <a href="https://en.wikipedia.org/wiki/Bradley%E2%80%93Terry_model">Bradley–Terry model</a> (the logistic cousin)</td>
+</tr>
+<tr>
+<td>Ridge regression</td>
+<td>Résumé fit (keeps early-season fits solvable)</td>
+<td><a href="https://en.wikipedia.org/wiki/Ridge_regression">Ridge regression</a></td>
+</tr>
+<tr>
+<td>Discretised normal + key-number reweighting</td>
+<td>Stage A margin model</td>
+<td><a href="https://en.wikipedia.org/wiki/Normal_distribution">Normal distribution</a>, <a href="https://en.wikipedia.org/wiki/Iterative_proportional_fitting">Iterative proportional fitting</a></td>
+</tr>
+<tr>
+<td>Poisson binomial distribution</td>
+<td>Exact final-wins distribution over a real schedule</td>
+<td><a href="https://en.wikipedia.org/wiki/Poisson_binomial_distribution">Poisson binomial distribution</a></td>
+</tr>
+<tr>
+<td>Kullback–Leibler divergence</td>
+<td>Market vs. model win-total and futures distributions</td>
+<td><a href="https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence">Kullback–Leibler divergence</a></td>
+</tr>
+<tr>
+<td>Removing the vig, power method</td>
+<td>De-vigging futures sets</td>
+<td>Clarke, Kovalchik &amp; Ingram (2017), "Adjusting bookmaker's odds to allow for overround", <em>American Journal of Sports Science</em> 5(6)</td>
+</tr>
+<tr>
+<td>Varying-coefficient regression</td>
+<td>Blend weights as smooth functions of the week</td>
+<td>Hastie &amp; Tibshirani (1993), "Varying-coefficient models", <em>JRSS B</em> 55(4); <a href="https://en.wikipedia.org/wiki/Polynomial_regression">Polynomial regression</a></td>
+</tr>
+<tr>
+<td>Cross-validation (leave-one-group-out)</td>
+<td>Blend calibration, feature tests, λ selection</td>
+<td><a href="https://en.wikipedia.org/wiki/Cross-validation_%28statistics%29">Cross-validation (statistics)</a></td>
+</tr>
+<tr>
+<td>Cluster (season) bootstrap</td>
+<td>Confidence intervals throughout</td>
+<td><a href="https://en.wikipedia.org/wiki/Bootstrapping_%28statistics%29">Bootstrapping (statistics)</a></td>
+</tr>
+<tr>
+<td>Regression toward the mean</td>
+<td>Why b<sub>market</sub> &lt; 1 and why early records count little</td>
+<td><a href="https://en.wikipedia.org/wiki/Regression_toward_the_mean">Regression toward the mean</a></td>
+</tr>
+<tr>
+<td>Monte Carlo simulation, common random numbers</td>
+<td>Season simulation; the joint fit's fast simulator</td>
+<td><a href="https://en.wikipedia.org/wiki/Monte_Carlo_method">Monte Carlo method</a>, <a href="https://en.wikipedia.org/wiki/Variance_reduction">Variance reduction</a></td>
+</tr>
+<tr>
+<td>Random effects</td>
+<td>Per-team rating uncertainty τ in the simulation</td>
+<td><a href="https://en.wikipedia.org/wiki/Random_effects_model">Random effects model</a></td>
+</tr>
+<tr>
+<td>L-BFGS-B, finite-difference gradients</td>
+<td>Market rating optimiser</td>
+<td><a href="https://en.wikipedia.org/wiki/Limited-memory_BFGS">Limited-memory BFGS</a>, <a href="https://en.wikipedia.org/wiki/Finite_difference">Finite difference</a></td>
+</tr>
+<tr>
+<td>CMA-ES</td>
+<td>Fits that run through the simulation</td>
+<td><a href="https://en.wikipedia.org/wiki/CMA-ES">CMA-ES</a></td>
+</tr>
+<tr>
+<td>Probit link</td>
+<td>Expected margin to win probability; the margin-vs-total check</td>
+<td><a href="https://en.wikipedia.org/wiki/Probit_model">Probit model</a></td>
+</tr>
+<tr>
+<td>Expected points (EPA)</td>
+<td>Turnover-luck values; efficiency features</td>
+<td><a href="https://www.nflfastr.com/">nflfastR</a> (nflverse)</td>
+</tr>
+<tr>
+<td>Efficient-market hypothesis</td>
+<td>Why no betting edge was expected or found</td>
+<td><a href="https://en.wikipedia.org/wiki/Efficient-market_hypothesis">Efficient-market hypothesis</a></td>
+</tr>
+<tr>
+<td>NFL tiebreakers</td>
+<td>Division and wild-card ordering in the simulation</td>
+<td><a href="https://www.nfl.com/standings/tie-breaking-procedures">NFL tie-breaking procedures</a></td>
+</tr>
+</tbody>
+</table>
+<p>A cautionary note from this project's own history: the Oct 14 bug was a <a href="https://en.wikipedia.org/wiki/Single-precision_floating-point_format">Single-precision floating-point format</a> lookup that rounded away the optimiser's tiny finite-difference steps. Gradient-based fits need inputs that respond smoothly at that scale.</p>
+</div>
+</div>
+</div>
+</div>
 <div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=3f56d673">
 <div class="jp-Cell-inputWrapper" tabindex="0">
 <div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
 </div>
 <div class="jp-InputArea jp-Cell-inputArea"><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
-<h2 id="11.-Changelog">11. Changelog<a class="anchor-link" href="#11.-Changelog">¶</a></h2><table>
+<h2 id="12.-Changelog">12. Changelog<a class="anchor-link" href="#12.-Changelog">¶</a></h2><table>
 <thead>
 <tr>
 <th>Date</th>
@@ -9423,6 +9552,10 @@ HFA 1.76; mean |model - market| expected wins: 0.07
 <tr>
 <td>2026-10-14</td>
 <td>Tied ranks shown as T-<em>n</em>; market-vs-results scatter scaled by blend weight; scoreboard added.</td>
+</tr>
+<tr>
+<td>2026-10-14</td>
+<td>Methodology published (GitHub Pages); statistical methods and references added.</td>
 </tr>
 </tbody>
 </table>
