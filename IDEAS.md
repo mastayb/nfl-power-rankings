@@ -66,6 +66,21 @@ with its pass-catching TEs. Not checkable yet: 2026 participation
 Not public: per-play coverage assignments (who covered whom) and raw tracking
 (Big Data Bowl samples only); player grades (PFF, paywalled).
 
+### Paid data options for live 2026 (checked 2026-10-14)
+
+Since the NGS feed died in 2023, nflverse participation comes from FTN Data and is released only *after* each postseason, so 2026 personnel/coverage arrives free around February.
+
+| Source | Gives | Price | Verdict |
+|---|---|---|---|
+| **PFF Pro** (Premium Stats Pro + API/CLI, `developer.pff.com/openapi.json`) | Player + team **grades** by facet (incl. pass/run blocking). **Aggregated** splits per player per game/season: vs **man / zone** (~50/56 cols), vs **blitz** (~86 cols), pressure/clean, depth/direction, passing concept, **alignment** (slot / wide / inline / box snaps), coverage matchup. Filter by week or game_id; CSV export + API. | ~$200/yr (verify at pff.com/subscribe) | Best-value add-on: grades (the film layer, esp. OL) + live man/zone and blitz splits. |
+| PFF Pro: what it does **not** have | **No play-by-play rows; no personnel groupings (11/12/13) or formations** (zero mentions in the API spec); coverage only man vs zone, no Cover 1/2/3 shells. | | Can't answer "base vs 13 personnel" directly. Partial proxies: TE inline snaps, opponent man/zone and blitz rates per game. |
+| FTN Data | Play-level charting incl. personnel, coverage, routes, motion, pressure (participation appears to be API tier) | CSV from $599; API from ~$3k/yr private, $5k commercial | Only route to live 2026 play-level personnel/coverage. Too pricey for a side project. |
+| SIS DataHub | Web tool with personnel/formation filters and on/off splits | $99.99/mo, $749.99/yr | Good for one-off by-hand checks (e.g. the Rams-Bills question); no bulk data. |
+
+Plan: build and validate on free nflverse 2016-2025; optionally add PFF Pro for grades + live man/zone/blitz splits.
+
+**License rule (public repo):** nflverse is CC-BY-SA (credit FTN Data via nflverse, 2023+; NFL NGS via nflverse, 2022 and earlier). Paid pulls (PFF/FTN/SIS) go in a git-ignored folder and are never committed. Publish only derived results, and check each provider's terms first (PFF's redistribution terms weren't visible).
+
 ### Plan
 
 1. **Style profiles.**
