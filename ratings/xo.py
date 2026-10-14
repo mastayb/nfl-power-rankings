@@ -123,3 +123,41 @@ def load_plays(seasons=SEASONS) -> pd.DataFrame:
         out.append(p.drop(columns=["nflverse_game_id", "offense_personnel", "defense_personnel",
                                    "defense_man_zone_type", "defense_coverage_type"]))
     return pd.concat(out, ignore_index=True)
+
+
+# --- player-level play table ----------------------------------------------------------
+
+PLAYER_COLS = ["game_id", "play_id", "season", "week", "season_type", "posteam", "defteam",
+               "play_type", "epa", "success", "yards_gained", "air_yards", "complete_pass",
+               "down", "ydstogo", "yardline_100", "wp", "pass", "rush", "qb_dropback", "sack",
+               "passer_player_id", "receiver_player_id", "rusher_player_id"]
+
+
+def _pbp_players(season: int) -> pd.DataFrame:
+    path = CACHE / f"pbp_players_{season}.parquet"
+    if not path.exists():
+        import nflreadpy as nfl
+
+        nfl.load_pbp(seasons=[season]).select(PLAYER_COLS).to_pandas().to_parquet(path, index=False)
+    return pd.read_parquet(path)
+
+
+def load_player_plays(seasons=range(2018, 2026)) -> pd.DataFrame:
+    """Run/pass plays with passer/receiver/rusher ids and the defensive look:
+    man/zone, coverage shell, box count, pass rushers (blitz = 5+ rushers)."""
+    out = []
+    for y in seasons:
+        p = _pbp_players(y)
+        p = p[(p.season_type == "REG") & p.play_type.isin(["run", "pass"]) & p.epa.notna()]
+        part = _participation(y)[["nflverse_game_id", "play_id", "defenders_in_box",
+                                  "number_of_pass_rushers", "defense_man_zone_type",
+                                  "defense_coverage_type"]]
+        part = part.assign(play_id=part.play_id.astype(float))
+        p = p.assign(play_id=p.play_id.astype(float)).merge(
+            part, left_on=["game_id", "play_id"], right_on=["nflverse_game_id", "play_id"], how="left")
+        p["man"] = p.defense_man_zone_type.replace("", np.nan).map({"MAN_COVERAGE": True, "ZONE_COVERAGE": False})
+        p["shell"] = p.defense_coverage_type.map(shell)
+        p["blitz"] = np.where(p.number_of_pass_rushers.notna(), p.number_of_pass_rushers >= 5, np.nan)
+        p["heavy_box"] = np.where(p.defenders_in_box.notna(), p.defenders_in_box >= 8, np.nan)
+        out.append(p.drop(columns=["nflverse_game_id", "defense_man_zone_type", "defense_coverage_type"]))
+    return pd.concat(out, ignore_index=True)
