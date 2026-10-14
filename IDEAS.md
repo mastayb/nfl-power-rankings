@@ -39,3 +39,46 @@ How to test without fooling ourselves:
   ATS residual series; ask whether a detected regime persists out of sample.
 - Measure against the line available when you'd bet (opener vs close if we
   can get openers) and against the -110 breakeven (52.4%).
+
+## Xs and Os: "styles make the fight" (strategy-level analysis)
+
+Goal: bridge the numbers crowd and the film crowd. Break the efficiency
+numbers (EPA, success rate, explosive rate) down by scheme and personnel,
+estimate which style-vs-style matchups actually matter, and test whether
+they explain games beyond team quality. Team quality comes from the market
+ratings; this layer explains *how* teams get there and where specific
+matchups deviate.
+
+Motivating example (Ben, 2026 wk 5): the Rams seemed to stay out of base
+defense against the Bills' 13 personnel, limiting what Buffalo could do
+with its pass-catching TEs. Not checkable yet: 2026 participation
+(personnel/coverage) isn't published (see data table).
+
+### Data (checked 2026-10-14)
+
+| | 2016-21 | 2022-25 | 2026 |
+|---|---|---|---|
+| Participation (NGS): formation, off/def personnel, box, pass rushers, coverage type, man/zone, routes, time to throw, pressure, all 22 player IDs | yes | yes | no: `pbp_participation_2026` not released (404) |
+| FTN charting: motion, play action, RPO, screen, QB out of pocket, box, blitzers, rushers, interception-worthy, catchable, contested, created reception, drops, read thrown | no | yes | yes (live) |
+| Play-by-play: EPA, success, xpass/pass_oe, WP | yes | yes | yes |
+| NGS player-week (separation, CPOE, YACOE, RYOE, time to throw); PFR advanced (pressures, blitzes, missed tackles, coverage allowed) | yes | yes | NGS yes / PFR through 2025 |
+
+Not public: per-play coverage assignments (who covered whom) and raw tracking
+(Big Data Bowl samples only); player grades (PFF, paywalled).
+
+### Plan
+
+1. **Style profiles.**
+   - Offense: EPA / success / explosive rate by personnel (11/12/13/21), formation, motion, play action, RPO, screens.
+   - Defense: the same by personnel (base/nickel/dime), coverage (C0-C4, man/zone), blitz rate, rusher count.
+   - Coaching: early-down pass rate over expected (pbp `pass_oe`), fourth-down aggressiveness vs a decision model, pace.
+2. **Shrinkage is the core, not an add-on.** Team x situation splits are small samples ("Rams vs 13 personnel" might be 15 snaps). Use empirical Bayes / a hierarchical model so every split is pulled toward league and team baselines by its sample size. No raw split tables.
+3. **Matchup model.** Play EPA ~ offense quality + defense quality + style x style interactions (e.g. heavy personnel vs nickel, play action vs single-high, quick game vs blitz), all regularised. Outputs:
+   - league-wide interaction effects in EPA/play and in points;
+   - a per-game "style matchup adjustment" (points) from both teams' tendencies.
+4. **Test it honestly.** Does the style adjustment explain game results relative to the closing spread, out of sample (leave-one-season-out)? Prior: real but small (~1 point in specific matchups), partly priced. A validated map of which matchups matter is still new public work.
+5. **Player matchups (stretch).** On/off splits ("with this CB on the field") from participation player IDs, with the same shrinkage. Weaker than true matchups, which need tracking data.
+
+### First milestone
+
+2024-2025 style profiles plus the shrinkage model, built on participation + FTN + pbp, with a check that shrunk splits predict the second half of each season better than raw splits. Then the league-wide interaction model on 2022-2025. For 2026, a reduced live version from FTN + pbp tags only, until 2026 participation is released.
