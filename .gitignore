@@ -9,3 +9,4 @@ data/logs/
 data/snapshots/*.json
 data/paper/.lock
 data/paper/watch_state.json
+.ipynb_checkpoints/
