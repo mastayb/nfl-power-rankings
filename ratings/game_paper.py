@@ -33,6 +33,8 @@ GAME_SERIES = {"KXNFLGAME": "game_winner", "KXNFLSPREAD": "spread"}
 GAME_TRADES = PAPER_DIR / "game_trades.csv"
 GAME_MARKS = PAPER_DIR / "game_marks.csv"
 MIN_EDGE_GAME = 0.03     # the model misses current lines by ~1.8 pts; demand more than futures
+DEFAULT_SIGMA = 12.5     # pooled ladder sigma when no ladders are open (Stage A: 12.53)
+DEFAULT_HFA = 1.45       # lines-only HFA (Stage B) when lines alone can't identify ratings
 ET = ZoneInfo("America/New_York")
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -63,7 +65,8 @@ def stage_a_frame(tidy: pd.DataFrame, games: pd.DataFrame, model) -> tuple[pd.Da
            for g in games.itertuples()}
     obs = {k: o for k, o in obs.items() if len(o)}
     ladders = {k: o for k, o in obs.items() if (o.source == "spread").any()}
-    sigma, _ = fit_pooled_sigma(model, ladders)
+    # no ladders listed yet (early in a game's window): fall back to the usual pooled value
+    sigma = fit_pooled_sigma(model, ladders)[0] if ladders else DEFAULT_SIGMA
     rows = []
     for g in games.itertuples():
         if g.game_id not in obs:
@@ -81,20 +84,27 @@ def loo_margins(stage_a: pd.DataFrame, games: pd.DataFrame, sched: pd.DataFrame,
     season = Season.build(sched, TEAMS)
     probs = WinProbs(model, sigma)
     ladders = market_ladders(win_tidy)
-    full_lines = fit_margins(obs, "y", TEAMS, weights=obs.weight.to_numpy())
-    full = fit_joint(obs, season, ladders, probs, lam_w,
-                     start=(full_lines.ratings.reindex(TEAMS).to_numpy(), full_lines.hfa),
-                     fixed_hfa=full_lines.hfa)
+    def lines_start(o):
+        """Lines-only ratings + HFA as a start; if the lines alone leave the league
+        disconnected (early season), start flat at DEFAULT_HFA and let the win totals,
+        which cover all 32 teams, identify the ratings."""
+        try:
+            f = fit_margins(o, "y", TEAMS, weights=o.weight.to_numpy())
+            return f.ratings.reindex(TEAMS).to_numpy(), f.hfa
+        except ValueError:
+            return np.zeros(len(TEAMS)), DEFAULT_HFA
+
+    r0, h0 = lines_start(obs)
+    full = fit_joint(obs, season, ladders, probs, lam_w, start=(r0, h0), fixed_hfa=h0)
     out = {}
     for g in games.itertuples():
         held = (obs.source == "kalshi") & (obs.game_id == g.game_id)
         if not held.any():
             continue
         o = obs[~held]
-        lines = fit_margins(o, "y", TEAMS, weights=o.weight.to_numpy())
+        _, h = lines_start(o)
         f = fit_joint(o, season, ladders, probs, lam_w,
-                      start=(full.ratings.reindex(TEAMS).to_numpy(), lines.hfa),
-                      fixed_hfa=lines.hfa)
+                      start=(full.ratings.reindex(TEAMS).to_numpy(), h), fixed_hfa=h)
         r = f.ratings
         out[g.game_id] = float(r[g.home_team] - r[g.away_team] + (0 if g.neutral else f.hfa))
     return pd.Series(out)

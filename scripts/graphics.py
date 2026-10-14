@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 import matplotlib
+import matplotlib.ticker
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
@@ -25,6 +26,8 @@ from PIL import Image  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+
+from ratings.display import display_ranks  # noqa: E402
 
 SNAP_DIR = ROOT / "data" / "snapshots"
 LOGOS = ROOT / "data" / "cache" / "logos"
@@ -61,10 +64,19 @@ def load(snap_path: Path) -> tuple[pd.DataFrame, dict]:
         "color": pd.Series([bar_color(teams.loc[t, "team_color"], teams.loc[t, "team_color2"])
                             for t in b.index], index=b.index),   # align by team, not position
         "record": b.record, "rating": b.blend, "rank": b.blend_rank,
-        "market": b.market, "resume": b.resume,
+        "shown_rank": display_ranks(b.blend),
+        "market": b.market, "resume": b.resume, "resume_neutral": b.resume_neutral,
         "playoffs": sim.playoffs, "division": sim.division, "sb": sim.sb,
     })
-    meta = {"week": int(b.blend_cutoff_week.iloc[0]) + 1,
+    from ratings.blend import load_blend
+
+    w = load_blend(int(b.blend_cutoff_week.iloc[0]))
+    df["mkt_part"] = w.b_market * df.market
+    df["res_part"] = w.b_margin * df.resume + w.b_neutral * df.resume_neutral
+    df["mkt_part"] -= df.mkt_part.mean()          # centred: the two parts sum to the rating
+    df["res_part"] -= df.res_part.mean()
+    meta = {"b_market": w.b_market, "b_resume": w.resume_weight,
+            "week": int(b.blend_cutoff_week.iloc[0]) + 1,
             "date": pd.Timestamp(stem).strftime("%b %-d, %Y"),
             "season": int(stem[:4]), "n_sims": 10_000}
     return df, meta
@@ -168,7 +180,7 @@ def rankings(df: pd.DataFrame, meta: dict, out: Path) -> Path:
             ha, dx = ("left", 0.18) if r.rating >= 0 else ("right", -0.18)
             ax.text(r.rating + dx, i, f"{r.rating:+.1f}", va="center", ha=ha, fontsize=12.5,
                     color=INK_2, fontweight="bold", zorder=4)
-            ax.text(-0.80, i, f"{int(r['rank'])}", transform=ytr, ha="right", va="center",
+            ax.text(-0.80, i, r.shown_rank, transform=ytr, ha="right", va="center",
                     fontsize=15, fontweight="bold")
             place_logo(ax, team, -0.67, i, 34, transform=ytr)
             ax.text(-0.56, i, r.nick, transform=ytr, ha="left", va="center", fontsize=14.5)
@@ -183,52 +195,89 @@ def rankings(df: pd.DataFrame, meta: dict, out: Path) -> Path:
 # --- 2. market vs results ---------------------------------------------------------------------
 
 def market_vs_results(df: pd.DataFrame, meta: dict, out: Path) -> Path:
+    """Each axis is that component's contribution to the rating (weight x rating),
+    drawn on one equal scale: distance on either axis moves the ranking equally,
+    and diagonals are lines of equal overall rating."""
     fig = frame("Who does the market believe?",
-                "Market rating vs. results so far (scoring margin adjusted for opponents). "
-                "Both in points vs. an average team.", meta)
-    ax = fig.add_axes([0.075, 0.12, 0.89, 0.71])
-    xpad, ypad = 2.5, 1.2
-    ax.set_xlim(df.resume.min() - xpad, df.resume.max() + xpad)
-    ax.set_ylim(df.market.min() - ypad, df.market.max() + ypad)
-    for s in ("top", "right"):
-        ax.spines[s].set_visible(False)
+                "Each team's rating, split into its market part and its results part. "
+                "Both axes in rating points, on the same scale.", meta)
+    ax = fig.add_axes([0.075, 0.12, 0.40, 0.71])
+    fig.canvas.draw()
+    bbox = ax.get_window_extent()
+    pad = 0.8
+    y0, y1 = df.mkt_part.min() - pad, df.mkt_part.max() + pad
+    half_x = (y1 - y0) * bbox.width / bbox.height / 2          # equal aspect
+    xc = (df.res_part.min() + df.res_part.max()) / 2
+    x0, x1 = xc - half_x, xc + half_x
+    ax.set_xlim(x0, x1)
+    ax.set_ylim(y0, y1)
+    for sname in ("top", "right"):
+        ax.spines[sname].set_visible(False)
     ax.spines["left"].set_color(GRID)
     ax.spines["bottom"].set_color(GRID)
+    ax.tick_params(length=0, labelsize=11)
+    fmt = lambda v, _: f"{v:+.0f}" if round(v) else "0"
+    ax.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(2))
+    ax.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(2))
+    ax.xaxis.set_major_formatter(fmt)
+    ax.yaxis.set_major_formatter(fmt)
+    ax.set_xlabel(f"Results part ({meta['b_resume']:.0%} weight)", fontsize=13, color=INK_2, labelpad=8)
+    ax.set_ylabel(f"Market part ({meta['b_market']:.0%} weight)", fontsize=13, color=INK_2, labelpad=8)
     ax.axvline(0, color=MUTED, lw=1, zorder=1)
     ax.axhline(0, color=MUTED, lw=1, zorder=1)
-    ax.tick_params(length=0, labelsize=11)
-    ax.set_xlabel("Results so far (higher = better)", fontsize=13, color=INK_2, labelpad=8)
-    ax.set_ylabel("Market rating (higher = better)", fontsize=13, color=INK_2, labelpad=8)
-    ax.xaxis.set_major_formatter(lambda v, _: f"{v:+.0f}" if v else "0")
-    ax.yaxis.set_major_formatter(lambda v, _: f"{v:+.0f}" if v else "0")
-    ax.grid(color=GRID, lw=1, zorder=0)
-    ax.set_axisbelow(True)
-    x0, x1 = ax.get_xlim()
-    y0, y1 = ax.get_ylim()
-    ax.text(x0 + 0.4, y1 - 0.35, "Market rates them higher than their results",
-            fontsize=12.5, color=MUTED, va="top")
-    ax.text(x1 - 0.4, y0 + 0.35, "Results ahead of the market", fontsize=12.5, color=MUTED,
-            ha="right", va="bottom")
-    # (text, label offset in data units); called-out teams are drawn last, on top
-    callouts = {"HOU": ("Texans 0-3: market still above average", (3.0, 1.1)),
-                "LV": ("Raiders 3-0: market unconvinced", (1.8, -1.4)),
-                "LA": ("Rams 1-2: market's #1", (2.0, 0.4))}
-    order = [t for t in df.index if t not in callouts] + [t for t in callouts if t in df.index]
+    # equal-rating diagonals: results part + market part = c
+    xs = np.array([x0, x1])
+    for c in range(-10, 11, 2):
+        ax.plot(xs, c - xs, color=GRID, lw=1, zorder=0)
+        # label only where the line meets the top edge, so labels never sit beside
+        # either axis's numbers; spacing (2 points per line) carries the rest
+        xt = c - y1
+        if x0 + 0.3 <= xt <= x1 - 0.3:
+            ax.text(xt + 0.12, y1 - 0.12, f"{c:+d}" if c else "0", fontsize=10, color=MUTED,
+                    ha="left", va="top")
+    callouts = pick_callouts(df)
+    order = [t for t in df.index if t not in callouts] + list(callouts)
     for team in order:
         r = df.loc[team]
-        place_logo(ax, team, r.resume, r.market, 40)
-    for team, (text, (dx, dy)) in callouts.items():
-        if team not in df.index:
-            continue
-        r = df.loc[team]
-        ax.annotate(text, (r.resume, r.market), xytext=(r.resume + dx, r.market + dy),
-                    fontsize=12, color=INK, ha="left", va="center",
-                    arrowprops=dict(arrowstyle="-", color=MUTED, lw=1, shrinkA=2, shrinkB=15),
-                    zorder=6)
+        place_logo(ax, team, r.res_part, r.mkt_part, 34)
+
+    # right panel: how to read + this week's stories
+    X = 0.53
+    fig.text(X, 0.79, "How to read it", fontsize=15, fontweight="bold", va="top")
+    guide = ["Up: the market rates them higher.",
+             "Right: their results so far are better.",
+             "Each axis is scaled by its weight in this week's ranking,",
+             "so equal distances move the ranking equally.",
+             "Diagonal lines join teams with the same overall rating,",
+             "2 points apart (labels along the top)."]
+    for i, line in enumerate(guide):
+        fig.text(X, 0.735 - i * 0.04, line, fontsize=12.5, color=INK_2, va="top")
+    fig.text(X, 0.46, "This week", fontsize=15, fontweight="bold", va="top")
+    for i, (team, text) in enumerate(callouts.items()):
+        yy = 0.39 - i * 0.085
+        lax = fig.add_axes([X, yy - 0.03, 0.03, 0.06])
+        lax.axis("off")
+        lax.imshow(logo(team, 40))
+        fig.text(X + 0.04, yy, text, fontsize=13, va="center")
     path = out / "2_market_vs_results.png"
     fig.savefig(path, dpi=DPI)
     plt.close(fig)
     return path
+
+
+def pick_callouts(df: pd.DataFrame) -> dict[str, str]:
+    """This week's three stories: the market's #1, and the biggest gap each way
+    between market rank and results rank."""
+    m_rank = df.market.rank(ascending=False).astype(int)
+    r_rank = df.resume.rank(ascending=False).astype(int)
+    gap = r_rank - m_rank                       # > 0: market likes them more than results do
+    out = {}
+    top = m_rank.idxmin()
+    out[top] = f"{df.nick[top]} {df.record[top]}: market's #1 (results #{r_rank[top]})"
+    for team, label in [(gap.drop(list(out)).idxmax(), "market #{m}, results #{r}"),
+                        (gap.drop(list(out)).idxmin(), "results #{r}, market #{m}")]:
+        out[team] = f"{df.nick[team]} {df.record[team]}: " + label.format(m=m_rank[team], r=r_rank[team])
+    return out
 
 
 # --- 3. playoff odds ----------------------------------------------------------------------------

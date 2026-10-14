@@ -51,3 +51,26 @@ def test_fit_joint_fixed_hfa_lines_only_matches_wls():
     j = fit_joint(obs, season, {}, probs, lam=0.0, fixed_hfa=wls.hfa)
     assert j.hfa == wls.hfa
     np.testing.assert_allclose(j.ratings[teams], wls.ratings[teams], atol=1e-3)
+
+
+def test_winprobs_resolves_tiny_steps_for_gradient_fits():
+    from ratings.ladder import KeyNumberModel, MAX_M
+    probs = WinProbs(KeyNumberModel(np.ones(MAX_M + 2)), 12.5)
+    x = np.array([3.0])
+    assert probs(x + 1e-8)[0][0] - probs(x)[0][0] > 0      # float32 would give exactly 0
+
+
+def test_fit_joint_win_totals_alone_move_ratings():
+    from ratings.wins import TeamLadder, fit_joint
+
+    teams = ["A", "B"]
+    sched = pd.DataFrame({"game_id": [f"g{i}" for i in range(4)], "week": [1, 2, 3, 4],
+                          "home_team": ["A", "B", "A", "B"], "away_team": ["B", "A", "B", "A"],
+                          "neutral": [False] * 4, "result": [np.nan] * 4})
+    season = Season.build(sched, teams)
+    probs = WinProbs(NormalModel(), 13.0)
+    # market: A very likely to win at least 3 of 4
+    ladders = {"A": TeamLadder("A", np.array([3]), np.array([0.2, 0.8]), pd.Series([0.8], index=[3]), 0.01)}
+    empty = pd.DataFrame(columns=["home_team", "away_team", "neutral", "y", "weight"])
+    f = fit_joint(empty, season, ladders, probs, lam=100.0, start=(np.zeros(2), 0.0), fixed_hfa=0.0)
+    assert f.ratings["A"] > 2.0          # moved well away from the flat start

@@ -50,7 +50,10 @@ class WinProbs:
         self._ga = np.interp(grid, self._mean, self._away)
 
     def __call__(self, mean) -> tuple[np.ndarray, np.ndarray]:
-        x = (np.asarray(mean, np.float32) - np.float32(self._lo)) / np.float32(self._step)
+        # float64 on purpose: the gradient-based fits (fit_joint, L-BFGS) take ~1e-8
+        # finite-difference steps, which float32 rounds away -> zero gradient -> the
+        # win-total term silently stops moving the ratings
+        x = (np.asarray(mean, np.float64) - self._lo) / self._step
         x = np.clip(x, 0, len(self._gh) - 1.001)
         i = x.astype(np.int64)
         f = x - i
@@ -231,5 +234,6 @@ def fit_joint(obs: pd.DataFrame, season: Season, ladders: dict[str, TeamLadder],
     kls = [kl(L.q_buckets, bucket_probs(dist[i], L.cuts)) for i, L in lad]
     mean_kl = float(np.mean(kls)) if kls else 0.0
     return JointFit(pd.Series(r, index=teams), float(hfa),
-                    float(np.sqrt(np.average(resid**2, weights=w))), float(mean_kl), lam,
+                    float(np.sqrt(np.average(resid**2, weights=w))) if len(w) else float("nan"),
+                    float(mean_kl), lam,
                     bool(res.success))

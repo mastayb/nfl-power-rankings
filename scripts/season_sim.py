@@ -28,6 +28,7 @@ from ratings.wins import WinProbs  # noqa: E402
 
 TEAMS = sorted(NFLVERSE_TEAMS)
 SNAP_DIR = ROOT / "data" / "snapshots"
+TAU_OVERRIDE = None  # --tau=X: simulate at one fixed tau (e.g. the futures-blind fit's)
 USE_JOINT = False   # --joint: use <snapshot>_joint.parquet ratings (lines + win totals + futures)
 N_SIMS = 10_000
 TAUS = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0]  # best fit to Kalshi futures, 2026-10-02: 4
@@ -78,7 +79,7 @@ def main(snap_path: Path) -> None:
     season = int(pd.read_parquet(snap_path.with_name(stem + "_games.parquet")).game_id.str[:4].iloc[0])
     sigma, hfa = float(b.sigma.iloc[0]), float(b.hfa.iloc[0])
     ratings = b.market.reindex(TEAMS).to_numpy()
-    taus = TAUS
+    taus = [TAU_OVERRIDE] if TAU_OVERRIDE is not None else TAUS
     joint_path = snap_path.with_name(stem + "_joint.parquet")
     if USE_JOINT and joint_path.exists():
         jf = pd.read_parquet(joint_path).set_index("team")
@@ -136,4 +137,5 @@ def main(snap_path: Path) -> None:
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     USE_JOINT = "--joint" in sys.argv  # opt in to the full joint fit (diagnostic for now)
+    TAU_OVERRIDE = next((float(a.split("=", 1)[1]) for a in sys.argv if a.startswith("--tau=")), None)
     main(Path(args[0]).resolve() if args else latest_snapshot())
