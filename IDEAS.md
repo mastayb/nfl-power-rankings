@@ -97,3 +97,37 @@ Plan: build and validate on free nflverse 2016-2025; optionally add PFF Pro for 
 ### First milestone
 
 2024-2025 style profiles plus the shrinkage model, built on participation + FTN + pbp, with a check that shrunk splits predict the second half of each season better than raw splits. Then the league-wide interaction model on 2022-2025. For 2026, a reduced live version from FTN + pbp tags only, until 2026 participation is released.
+
+## Opponent-quality sensitivity: "flat-track bullies", "giant killers" and "steady" teams
+
+Lower-dimensional cousin of the Xs and Os matchup model (Ben, 2026-10-14).
+Instead of style-specific skill, ask whether a team's performance depends on
+*opponent quality* in a team-specific way. Three archetypes:
+
+- **Flat-track bully:** offense crushes bad defenses but underperforms against elite ones (steep slope vs defensive quality). Defensive version: dominates median offenses, gets exposed by elite ones.
+- **Giant killer / matchup-proof:** the opposite, a flat slope; productive against elite opponents but never runs up the score on bad ones.
+- **Steady vs volatile:** low vs high game-to-game variance around expectation (floor vs ceiling), separate from the slope.
+
+### Model
+
+Per game (or per play, aggregated), team offensive efficiency vs expectation:
+
+    EPA_off(t, g) = a_t + b_t * DefQuality(opp(g)) + e,   Var(e) = s_t^2
+
+- a_t: overall skill; b_t: team-specific sensitivity to opponent quality (league slope = 1 after opponent adjustment); s_t: consistency.
+- Defense mirrored with offensive opponent quality.
+- Opponent quality from a leave-team-out rating (market rating, or opponent-adjusted EPA excluding games against team t) to avoid circularity.
+- Shrink b_t and s_t hierarchically: about 17 opponents per season means slopes are noisy.
+
+### Tests (same discipline as H2)
+
+1. **Persistence:** split-half correlation of b_t (opponents in weeks 1-9 vs 10+) and of s_t; also season to season for the same team (and same QB/play-caller, since coaching and QB continuity may carry the trait).
+2. **Size:** persistent SD of b_t in points per game against a top-5 vs bottom-5 opponent.
+3. **Market:** does the market already price it? Regress (closing line - aggregate ratings) on b_t x opponent quality; then results vs closing line (H5-style).
+4. **Consistency vs totals:** do "steady" teams' games have tighter margin distributions? Links to the sigma-vs-total finding (no league-wide effect; this asks it per team).
+
+### Expectations / power
+
+- Prior: weak or no persistence for slopes. 17 games per season, with a narrow spread of opponent quality, give each slope a large standard error; the H2 personnel contexts showed the same problem.
+- Most promising: multi-season pooling with QB and play-caller continuity, and play-level data to raise power (but the slope is still identified only by about 17 distinct opponents per season).
+- Cheap to run on 1999-2025 game-level data (closing lines + results + nflverse EPA), so a quick test before investing.
