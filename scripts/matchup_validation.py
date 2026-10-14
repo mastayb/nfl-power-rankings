@@ -32,7 +32,8 @@ from xo_round2 import boot, ols  # noqa: E402
 
 CACHE = ROOT / "data" / "cache"
 K_SHARE = 180.0     # team targets vs man for reliability ~0.5 (persistence test: r~0.38 at ~110)
-K_QB = 475.0        # dropbacks vs single-high for reliability ~0.5 (r~0.24 at ~150)
+K_QB = 475.0        # dropbacks vs single-high for reliability ~0.5 (r~0.24 at ~150, pooled seasons;
+                    # season-demeaned r is ~0, see persistence_audit.py: the QB test is a null)
 M_OPP = 60.0        # prior dropbacks for opponent tendency shrinkage
 pd.set_option("display.width", 200)
 
