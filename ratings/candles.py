@@ -41,7 +41,9 @@ def candles(client: KalshiClient, market: dict, refresh: bool = False) -> list[d
     CACHE.mkdir(parents=True, exist_ok=True)
     path = CACHE / f"{market['ticker']}.json"
     closed = market.get("status") in ("closed", "settled", "finalized", "determined")
-    if path.exists() and not refresh and closed:
+    # reuse the cache only if it was written after the market closed; a history
+    # cached while the market was still trading stops early (e.g. before kickoff)
+    if path.exists() and not refresh and closed and path.stat().st_mtime >= ts(market["close_time"]):
         return json.loads(path.read_text())
     series = market["ticker"].split("-")[0]
     start = ts(market["open_time"])

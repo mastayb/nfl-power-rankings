@@ -33,7 +33,7 @@ from ratings.game_paper import (MIN_EDGE_GAME, kickoff_utc, loo_margins, price_g
                                 stage_a_frame)
 from ratings.kalshi import KalshiClient, market_team, mid_width  # noqa: E402
 from ratings.ladder import load_key_weights  # noqa: E402
-from ratings.schedule import game_key, join_games, load_schedule  # noqa: E402
+from ratings.schedule import game_key, join_games, load_schedule, schedule_as_of  # noqa: E402
 
 SEASON = 2026
 OUT = ROOT / "data" / "backtest_clv.parquet"
@@ -86,14 +86,6 @@ def tidy_at(markets: pd.DataFrame, quotes: dict, t: int) -> pd.DataFrame:
                      "threshold": m.floor_strike if pd.notna(getattr(m, "floor_strike", np.nan)) else np.nan,
                      "yes_bid": bid, "yes_ask": ask, "mid": mid, "width": width})
     return pd.DataFrame(rows)
-
-
-def schedule_as_of(sched: pd.DataFrame, kick: pd.Series, t: int) -> pd.DataFrame:
-    """Hide results and lines of games that had not kicked off by t."""
-    s = sched.copy()
-    future = s.game_id.map(lambda g: g not in kick.index or ts(kick[g]) > t)
-    s.loc[future, ["result", "spread_line", "home_score", "away_score"]] = np.nan
-    return s
 
 
 def main(fetch_only: bool = False) -> None:

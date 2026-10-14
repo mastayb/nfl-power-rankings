@@ -113,3 +113,14 @@ def season_from_events(event_tickers: list[str]) -> int:
     if len(seasons) != 1:
         raise ValueError(f"events span seasons {seasons}")
     return seasons.pop()
+
+
+def schedule_as_of(sched: pd.DataFrame, kickoffs: pd.Series, t_unix: int) -> pd.DataFrame:
+    """The schedule as known at unix time t: results and closing lines of games
+    that had not kicked off by t are hidden (no lookahead in backtests)."""
+    from ratings.candles import ts
+
+    s = sched.copy()
+    future = s.game_id.map(lambda g: g not in kickoffs.index or ts(kickoffs[g]) > t_unix)
+    s.loc[future, ["result", "spread_line", "home_score", "away_score"]] = float("nan")
+    return s
