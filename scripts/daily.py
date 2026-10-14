@@ -9,7 +9,8 @@ Run: python -u scripts/daily.py      (cron, 9:30 ET; scripts/game_watch.py runs 
   4. season simulation        10,000 seasons from the blind ratings (<snapshot>_blind_sim.parquet)
   5. futures paper trades     open / mark / settle in data/paper/{trades,marks}.csv
   6. game paper trades        leave-one-out game model; data/paper/game_{trades,marks}.csv; CLV
-  7. git commit               data/snapshots + data/paper only (no push)
+  7. player props             market-implied player projections (data/props/); non-fatal
+  8. git commit               data/snapshots + data/paper + data/props only (no push)
 """
 
 from __future__ import annotations
@@ -40,7 +41,7 @@ from ratings.wins import WinProbs  # noqa: E402
 TEAMS = sorted(NFLVERSE_TEAMS)
 SNAP_DIR = ROOT / "data" / "snapshots"
 N_SIMS = 10_000
-COMMIT_PATHS = ["data/snapshots", "data/paper"]
+COMMIT_PATHS = ["data/snapshots", "data/paper", "data/props"]
 
 
 def step(msg: str) -> float:
@@ -75,27 +76,27 @@ def main() -> None:
 
 
 def _main() -> None:
-    t0 = step("1/7 snapshot")
+    t0 = step("1/8 snapshot")
     run("snapshot.py")
-    step("2/7 stage A")
+    step("2/8 stage A")
     run("stage_a.py")
     snap = latest_snapshot()
     stem = snap.stem
 
-    step("3/7 futures-blind fit (lines + win totals, tau fitted)")
+    step("3/8 futures-blind fit (lines + win totals, tau fitted)")
     blind = blind_fit(snap).set_index("team")
     tau, hfa, sigma = (float(blind[c].iloc[0]) for c in ("tau", "hfa", "sigma"))
     print(f"tau {tau:.2f}, HFA {hfa:.2f}, line RMSE {blind.line_rmse.iloc[0]:.2f}, "
           f"{int(blind.evals.iloc[0])} evals")
 
-    step("4/7 season simulation")
+    step("4/8 season simulation")
     league = League.from_nflverse(TEAMS)
     sched = Schedule.from_frame(load_schedule(int(stem[:4])), league)
     sim = simulate(league, sched, blind.rating.reindex(TEAMS).to_numpy(), hfa,
                    WinProbs(load_key_weights(), sigma), n_sims=N_SIMS, tau=tau, seed=1).probs
     sim.reset_index(names="team").to_parquet(snap.with_name(stem + "_blind_sim.parquet"), index=False)
 
-    step("5/7 futures paper trades")
+    step("5/8 futures paper trades")
     tidy = pd.read_parquet(snap)
     raw = json.load(open(snap.with_suffix(".json")))
     raw_markets = {m["ticker"]: m for blob in raw["series"].values() for m in blob["markets"]}
@@ -115,10 +116,15 @@ def _main() -> None:
     print(top[["ticker", "side", "model_p", "yes_bid", "yes_ask", "ev", "size_yes", "size_no"]]
           .to_string(index=False, float_format=lambda x: f"{x:.3f}"))
 
-    step("6/7 game markets (leave-one-out model, one trade per game, CLV after kickoff)")
+    step("6/8 game markets (leave-one-out model, one trade per game, CLV after kickoff)")
     run_game_pass(snap)
 
-    step("7/7 git")
+    step("7/8 player props")
+    r = subprocess.run([sys.executable, "-u", str(ROOT / "scripts" / "props.py")], cwd=ROOT)
+    if r.returncode != 0:                 # props are a side product: never block the commit
+        print(f"props step failed (exit {r.returncode}); continuing")
+
+    step("8/8 git")
     print(commit_paths(ROOT, COMMIT_PATHS, f"daily: snapshot {stem} "
                                            f"({summary['open']} open futures paper trades)"))
     print(f"\ndone in {(time.time() - t0) / 60:.1f} min")
